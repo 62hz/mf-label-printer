@@ -104,7 +104,7 @@ def test_notes_with_non_latin_text_still_make_a_valid_header(signed_in, monkeypa
 
 def test_designs_api_list_get_save_delete(signed_in):
     body = signed_in.get("/api/designs").json()
-    assert body["default"] == "mf-concept-price-card" and [d["slug"] for d in body["designs"]][:9] == ["mf-april", "mf-brand-barcode-foot", "mf-brand-ledger", "mf-brand-symbol-column", "mf-concept-catalogue-line", "mf-concept-format-tile", "mf-concept-price-card", "mf-large", "mf-scan-safe"]
+    assert body["default"] == "mf-concept-price-card" and [d["slug"] for d in body["designs"]][:11] == ["mf-april", "mf-brand-barcode-foot", "mf-brand-ledger", "mf-brand-symbol-column", "mf-concept-catalogue-line", "mf-concept-format-tile", "mf-concept-price-card", "mf-large", "mf-passport", "mf-scan-safe", "mf-stamp"]
     assert "fonts" not in body                                       # the font list has its own route: /api/fonts
     assert signed_in.get("/api/designs/mf-april").json()["width_mm"] == 50
     assert signed_in.get("/api/designs/nope").status_code == 404
@@ -196,7 +196,7 @@ def with_font(key):
 def test_fonts_api_lists_installed_and_bundled_families(font_client):
     body = font_client.get("/api/fonts").json()
     by_key = {f["key"]: f for f in body["fonts"]}
-    assert set(by_key) == {"arial", "calibri", "dm-sans", "dm-sans-light", "dm-sans-medium", "dm-sans-semibold"}
+    assert set(by_key) == {"arial", "calibri", "dm-sans", "dm-sans-light", "dm-sans-medium", "dm-sans-semibold", "dm-mono", "dm-mono-medium"}
     assert by_key["dm-sans"] == {"key": "dm-sans", "name": "DM Sans", "source": "bundled", "styles": ["regular", "bold"]}
     assert by_key["arial"]["source"] == "system" and by_key["arial"]["styles"] == ["regular", "bold", "italic", "bolditalic"]
 
@@ -247,4 +247,4 @@ def test_only_added_fonts_can_be_removed_and_odd_keys_are_404(font_client, key):
     r = font_client.delete("/api/fonts/" + key)
     assert r.status_code == 404
     assert (fonts.SYSTEM_DIR / "arial.ttf").exists() and (fonts.BUNDLED_DIR / "DMSans-Regular.ttf").exists()
-    assert {f["key"] for f in font_client.get("/api/fonts").json()["fonts"]} == {"arial", "calibri", "dm-sans", "dm-sans-light", "dm-sans-medium", "dm-sans-semibold"}
+    assert {f["key"] for f in font_client.get("/api/fonts").json()["fonts"]} == {"arial", "calibri", "dm-sans", "dm-sans-light", "dm-sans-medium", "dm-sans-semibold", "dm-mono", "dm-mono-medium"}

@@ -13,7 +13,7 @@ from . import fonts
 DEFAULT_SLUG = os.environ.get("LABELPRINTER_DEFAULT_DESIGN", "mf-concept-price-card")  # the design the page opens with
 BUILTIN_DIR = Path(__file__).resolve().parent / "designs"
 FIELDS = {"sku", "artist", "title", "format", "year", "genre", "price", "copies"}
-TYPES = ("text", "barcode", "rect", "image")
+TYPES = ("text", "barcode", "rect", "image", "ellipse", "perforation")
 MAX_ELEMENTS = 40
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
 _SLUG_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,59}")  # everything slugify() makes; nothing that can name a path
@@ -45,6 +45,17 @@ def _rotate(d: dict, where: str) -> int:
     if r not in (0, 90):
         raise ValueError(f"{where}: rotate must be 0 or 90")
     return r
+
+
+def _mrz(d: dict, where: str) -> int:
+    """0 (off) or the number of characters of a machine-readable line (like the two 36-character lines of an ID card)."""
+    try:
+        n = int(d.get("mrz", 0))
+    except (TypeError, ValueError):
+        n = -1
+    if n != 0 and not 10 <= n <= 60:
+        raise ValueError(f"{where}: mrz must be 0 or between 10 and 60")
+    return n
 
 
 def _font_key(d: dict, where: str) -> str:
@@ -115,7 +126,8 @@ def validate(design: dict) -> dict:
                 first_item=bool(el.get("first_item", False)),          # only the part before the first comma
                 blank=str(el.get("blank", ""))[:4],                     # shown when the field is empty, e.g. an en dash
                 after=str(el.get("after", ""))[:60],                    # flow: start under this element's last line
-                after_gap=_num({"after_gap": el.get("after_gap", 0)}, "after_gap", 0, 20, where))
+                after_gap=_num({"after_gap": el.get("after_gap", 0)}, "after_gap", 0, 20, where),
+                mrz=_mrz(el, where))                                    # passport machine-readable line: fixed width, filled with <
         elif etype == "barcode":
             clean.update(content=_check_placeholders(str(el.get("content", "{sku}")), where),
                          mode=_choice(el, "mode", ("fit", "integer"), "fit", where), rotate=_rotate(el, where),
@@ -124,6 +136,15 @@ def validate(design: dict) -> dict:
         elif etype == "image":
             clean.update(src=_choice(el, "src", ("logo", "symbol", "screen-logo"), "logo", where),
                          gives_way=bool(el.get("gives_way", False)))  # left out when a barcode needs the room
+        elif etype == "ellipse":      # a disc or a ring (a circle when w = h), optionally with concentric grooves inside
+            clean.update(fill=_choice(el, "fill", ("none", "black", "white"), "none", where),
+                         stroke=_num({"stroke": el.get("stroke", 0.125)}, "stroke", 0, 5, where),
+                         rings=int(_num({"rings": el.get("rings", 0)}, "rings", 0, 12, where)),
+                         ring_gap=_num({"ring_gap": el.get("ring_gap", 0.5)}, "ring_gap", 0.1, 3, where))
+        elif etype == "perforation":  # a stamp edge: a hairline frame with half-round notches cut into it
+            clean.update(pitch=_num({"pitch": el.get("pitch", 1.25)}, "pitch", 0.6, 5, where),
+                         radius=_num({"radius": el.get("radius", 0.4)}, "radius", 0.15, 1.5, where),
+                         stroke=_num({"stroke": el.get("stroke", 0.125)}, "stroke", 0.1, 1, where))
         out["elements"].append(clean)
     return out
 

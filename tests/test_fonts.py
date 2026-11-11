@@ -60,11 +60,11 @@ def test_scan_reads_family_keys_and_style_slots(tmp_path):
     system = real_system(tmp_path, "arial.ttf", "arialbd.ttf", "calibri.ttf")
     reg = registry(tmp_path, system=system, bundled=fonts.BUNDLED_DIR)
     fam = by_key(reg)
-    assert set(fam) == {"arial", "calibri", "dm-sans", "dm-sans-light", "dm-sans-medium", "dm-sans-semibold"}
+    assert set(fam) == {"arial", "calibri", "dm-sans", "dm-sans-light", "dm-sans-medium", "dm-sans-semibold", "dm-mono", "dm-mono-medium"}
     assert fam["arial"] == {"key": "arial", "name": "Arial", "source": "system", "styles": ["regular", "bold"]}
     assert fam["calibri"]["styles"] == ["regular"]
     assert fam["dm-sans"] == {"key": "dm-sans", "name": "DM Sans", "source": "bundled", "styles": ["regular", "bold"]}
-    assert [f["name"] for f in reg.families()] == ["Arial", "Calibri", "DM Sans", "DM Sans Light", "DM Sans Medium", "DM Sans SemiBold"]  # sorted by name
+    assert [f["name"] for f in reg.families()] == ["Arial", "Calibri", "DM Mono", "DM Mono Medium", "DM Sans", "DM Sans Light", "DM Sans Medium", "DM Sans SemiBold"]  # sorted by name
 
 
 def test_bundled_dm_sans_files_read_as_dm_sans_regular_and_bold():

@@ -118,10 +118,15 @@ def main():
 
             # ---- designer: edit, see it in the preview request, save as, print with it, reload, delete
             expect(page.locator("#designSel")).to_have_value("mf-concept-price-card")   # the page opens on the MF Price card
+            page.click("#designer summary")
+            page.select_option("#designSel", "mf-stamp")                                # the new element types open in the editor
+            page.locator("#elList li", has_text="perforation").locator("button.elname").click()
+            expect(page.locator("#props")).to_contain_text("Notch spacing")
+            page.locator("#elList li", has_text="disc ·").first.locator("button.elname").click()
+            expect(page.locator("#props")).to_contain_text("Grooves")
             page.select_option("#designSel", "mf-april")
             expect(page.locator("#designDelete")).to_be_disabled()                      # built-in designs cannot be deleted
             expect(page.locator("#designNotes")).to_contain_text("1 dot")               # April design has 1-dot bars
-            page.click("#designer summary")
             expect(page.locator("#elList li")).to_have_count(10)
             page.locator("#elList li", has_text="artist").locator("button.elname").click()
             with page.expect_request(lambda r: r.url.endswith("/api/label.png") and '"size_pt":9' in (r.post_data or "")):
@@ -134,7 +139,7 @@ def main():
             groups = lambda: page.eval_on_selector_all(font_select + " optgroup", "els => els.map(e => e.label)")
             assert groups() == ["Brand", "Installed"], groups()
             page.fill('#props input[data-role="font-filter"]', "dm")
-            expect(page.locator(font_select + " option")).to_have_count(5)                # the four DM Sans weights, and the chosen Arial stays listed
+            expect(page.locator(font_select + " option")).to_have_count(7)                # the four DM Sans and two DM Mono families, and the chosen Arial stays listed
             with page.expect_request(lambda r: r.url.endswith("/api/label.png") and '"font":"dm-sans"' in (r.post_data or "")):
                 page.select_option(font_select, label="DM Sans")
             expect(page.locator('#props button[data-role="font-remove"]')).to_be_hidden()  # the brand font cannot be removed
@@ -182,11 +187,11 @@ def main():
             assert len(pymupdf.open(dl.value.path())) == 2
 
             page.reload()                                                                # saved designs survive a reload
-            expect(page.locator("#designSel option")).to_have_count(10)                  # nine built in + the saved one
+            expect(page.locator("#designSel option")).to_have_count(12)                  # eleven built in + the saved one
             page.select_option("#designSel", "cd-shelf")
             expect(page.locator("#designDelete")).to_be_enabled()
             page.click("#designDelete")
-            expect(page.locator("#designSel option")).to_have_count(9)
+            expect(page.locator("#designSel option")).to_have_count(11)
             expect(page.locator("#designSel")).to_have_value("mf-concept-price-card")
 
             body = page.inner_text("body")

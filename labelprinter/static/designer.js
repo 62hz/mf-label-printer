@@ -8,14 +8,18 @@ const PROPS = {
   barcode: [["content", "text"], ["mode", ["integer", "fit"]], ["rotate", ["0", "90"]]],
   rect: [],
   image: [["src", ["logo", "symbol", "screen-logo"]], ["gives_way", "bool"]],
+  ellipse: [["fill", ["none", "black", "white"]], ["stroke", "num"], ["rings", "num"], ["ring_gap", "num"]],
+  perforation: [["pitch", "num"], ["radius", "num"], ["stroke", "num"]],
 };
 const LABELS = { content: "Text", font: "Font", size_pt: "Size (pt)", min_size_pt: "Smallest (pt)", bold: "Bold", italic: "Italic",
-                 reverse: "White on black", upper: "Uppercase", lines: "Lines (wrap)", rotate: "Turn (degrees)", src: "Logo file", gives_way: "Hide if the barcode needs the room", align: "Align", valign: "Vertical", mode: "Bars", x: "X (mm)", y: "Y (mm)", w: "Width (mm)", h: "Height (mm)" };
+                 reverse: "White on black", upper: "Uppercase", lines: "Lines (wrap)", rotate: "Turn (degrees)", src: "Logo file", gives_way: "Hide if the barcode needs the room", align: "Align", valign: "Vertical", mode: "Bars", fill: "Fill", stroke: "Line (mm)", rings: "Grooves", ring_gap: "Groove gap (mm)", pitch: "Notch spacing (mm)", radius: "Notch radius (mm)", x: "X (mm)", y: "Y (mm)", w: "Width (mm)", h: "Height (mm)" };
 const DEFAULTS = {
   text: { type: "text", content: "{artist}", x: 2, y: 2, w: 20, h: 3, font: "arial", size_pt: 6, min_size_pt: 4, bold: false, italic: false, reverse: false, upper: false, align: "left", valign: "top" },
   barcode: { type: "barcode", content: "{sku}", x: 2, y: 22, w: 22, h: 5, mode: "integer" },
   rect: { type: "rect", x: 2, y: 16, w: 46, h: 0.25 },
   image: { type: "image", src: "symbol", x: 38, y: 17, w: 9.4, h: 10.4 },
+  ellipse: { type: "ellipse", x: 4, y: 4, w: 10, h: 10, fill: "none", stroke: 0.125, rings: 0, ring_gap: 0.5 },
+  perforation: { type: "perforation", x: 2.5, y: 2.5, w: 45, h: 25, pitch: 1.25, radius: 0.4, stroke: 0.125 },
 };
 
 let designList = [];

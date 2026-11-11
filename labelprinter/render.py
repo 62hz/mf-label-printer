@@ -7,6 +7,7 @@ see designs.py for the schema and labelprinter/designs/*.json for the built-in o
 import io
 import math
 import re
+import unicodedata
 from functools import lru_cache
 from pathlib import Path
 
@@ -165,6 +166,15 @@ def fit_lines(draw, text: str, path: Path, max_px: float, avail: int, min_px: fl
     return [fit(draw, text, path, floor_px, avail, floor_px)[0]], f
 
 
+def mrz(text: str, n: int) -> str:
+    """A passport machine-readable line: capitals and digits only, words and symbols joined by '<', dots and
+    apostrophes dropped, then cut or filled with '<' to exactly n characters."""
+    t = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().upper()
+    t = re.sub(r"[.,'`]+", "", t)
+    t = re.sub(r"[^A-Z0-9<]+", "<", t)
+    return t[:n].ljust(n, "<")
+
+
 def bars(data: str) -> str:
     """Code128 modules as a '1'/'0' string."""
     if not data:
@@ -191,13 +201,15 @@ def _text(draw, el: dict, label: Label, k: int = 1, flow_y: int | None = None):
         text = text.split(",")[0].strip()
     if not text:
         text = el["blank"]
+    if el["mrz"]:
+        text = mrz(text, el["mrz"])
     if not text:
         return None
     if el["upper"]:
         text = text.upper()
     x0, y0, x1, y1 = (v * k for v in _box(el))
     if el["valign"] == "flow" and flow_y is not None:
-        y0 = flow_y
+        y0 = min(flow_y, y1)           # never lower than the last baseline this element allows
     pad = 2 * k if el["reverse"] else 0
     path = fonts.resolve(el["font"], el["bold"], el["italic"])
     avail = max(1, x1 - x0 - 2 * pad)
@@ -258,6 +270,52 @@ def _barcode(draw, el: dict, label: Label) -> int:
     return math.floor(n * scale + 0.5)
 
 
+def _ellipse(draw, el: dict) -> None:
+    """A disc or ring in the box: the fill, then an outline of `stroke` mm, then `rings` more outlines each `ring_gap` mm further in."""
+    x0, y0, x1, y1 = _box(el)
+    box = (x0, y0, x1 - 1, y1 - 1)
+    line = max(1, round(el["stroke"] * DPM))
+    if el["fill"] != "none":
+        draw.ellipse(box, fill=0 if el["fill"] == "black" else 255)
+    if el["stroke"] > 0:
+        draw.ellipse(box, outline=0, width=line)
+    gap = max(1, round(el["ring_gap"] * DPM))
+    for i in range(1, el["rings"] + 1):
+        inset = i * gap
+        if x0 + inset >= x1 - 1 - inset or y0 + inset >= y1 - 1 - inset:
+            break
+        draw.ellipse((x0 + inset, y0 + inset, x1 - 1 - inset, y1 - 1 - inset), outline=0, width=line)
+
+
+def _perforation(draw, el: dict) -> None:
+    """A stamp edge: a frame whose sides are cut by half-round notches. The notches are spread evenly along each side and
+    the corners sit in the middle of a tooth, so every stamp corner is whole."""
+    x0, y0, x1, y1 = _box(el)
+    x1, y1 = x1 - 1, y1 - 1
+    t = max(1, round(el["stroke"] * DPM))
+
+    def centres(length: int):
+        n = max(1, round(length / (el["pitch"] * DPM)))
+        step = length / n
+        return [round((i + 0.5) * step) for i in range(n)], step
+
+    for horizontal, fixed, start, end, quarter in ((True, y0, x0, x1, (0, 180)), (True, y1, x0, x1, (180, 360)),
+                                                  (False, x0, y0, y1, (-90, 90)), (False, x1, y0, y1, (90, 270))):
+        cs, step = centres(end - start)
+        r = max(2, min(round(el["radius"] * DPM), int(step / 2) - 1))
+        edge = start
+        for c in cs:
+            a, b = start + c - r, start + c + r
+            for lo, hi in ((edge, a - 1),):
+                if hi >= lo:
+                    draw.rectangle((lo, fixed, hi, fixed + t - 1) if horizontal else (fixed, lo, fixed + t - 1, hi), fill=0)
+            centre = (start + c, fixed) if horizontal else (fixed, start + c)
+            draw.arc((centre[0] - r, centre[1] - r, centre[0] + r, centre[1] + r), quarter[0], quarter[1], fill=0, width=t)
+            edge = b + 1
+        if end >= edge:
+            draw.rectangle((edge, fixed, end, fixed + t - 1) if horizontal else (fixed, edge, fixed + t - 1, end), fill=0)
+
+
 @lru_cache(maxsize=16)
 def _logo(src: str, w: int, h: int) -> Image.Image:
     logo = Image.open(ASSETS / LOGO_FILES[src]).convert("RGBA")
@@ -313,6 +371,10 @@ def render(label: Label, design: dict) -> Image.Image:
         elif el["type"] == "rect":
             x0, y0, x1, y1 = _box(el)
             draw.rectangle((x0, y0, x1 - 1, y1 - 1), fill=0)
+        elif el["type"] == "ellipse":
+            _ellipse(draw, el)
+        elif el["type"] == "perforation":
+            _perforation(draw, el)
         elif el["type"] == "image":
             x0, y0, x1, y1 = _box(el)
             logo = _logo(el["src"], x1 - x0, y1 - y0)

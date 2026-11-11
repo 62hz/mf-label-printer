@@ -37,15 +37,18 @@ def cap_mm(pt: float) -> float:
 
 
 def text(eid, content, font, pt, x, w, baseline, *, align="left", min_pt=None, upper=False, lines=1, top=None,
-         blank="", first_item=False):
+         blank="", first_item=False, mrz=0):
     """A text line whose baseline is at `baseline` mm. The box is one em tall and ends on the baseline;
     a text that may wrap gets a box from `top` down to the baseline, the room its lines must fit in."""
     base = round(baseline * DPM)
     h = round(pt * PX_PER_PT) if top is None else base - round(top * DPM)
-    return {"id": eid, "type": "text", "content": content, "x": x, "y": mm(base - h), "w": w, "h": mm(h),
-            "font": font, "size_pt": pt, "min_size_pt": min_pt or pt, "bold": False, "italic": False, "reverse": False,
-            "upper": upper, "lines": lines, "align": align, "valign": "baseline",
-            "blank": blank, "first_item": first_item}
+    el = {"id": eid, "type": "text", "content": content, "x": x, "y": mm(base - h), "w": w, "h": mm(h),
+          "font": font, "size_pt": pt, "min_size_pt": min_pt or pt, "bold": False, "italic": False, "reverse": False,
+          "upper": upper, "lines": lines, "align": align, "valign": "baseline",
+          "blank": blank, "first_item": first_item}
+    if mrz:
+        el["mrz"] = mrz
+    return el
 
 
 def barcode(x, y, w, h):
@@ -222,8 +225,80 @@ def format_tile():
     ])
 
 
+MONO, MONO_REG = "dm-mono-medium", "dm-mono"
+
+
+def ellipse(eid, x, y, w, h, *, fill="none", stroke=0.125, rings=0, ring_gap=0.5):
+    return {"id": eid, "type": "ellipse", "x": x, "y": y, "w": w, "h": h, "fill": fill, "stroke": stroke,
+            "rings": rings, "ring_gap": ring_gap}
+
+
+def stamp():
+    """After Japanese postage stamps: a perforated edge, a printed hairline border, a vignette (a record, grooves and label),
+    the price as the denomination, and a postmark that overlaps the vignette and carries the year.
+
+    Left: the record and its postmark. Right: price, a rule, artist and title. Foot: format, genre, SKU, then the barcode."""
+    frame = 1.3
+    xi0, xi1, yi0, yi1 = L + frame, R - frame, T + frame, B - frame      # the printed border, inside the perforation
+    disc = 11.5
+    cx = cy = 5.2 + disc / 2
+    pm = 7.0                                                         # postmark diameter
+    pcx = pcy = 15.4
+    rx = 19.5                                                        # the right column
+    rw = xi1 - 0.8 - rx
+    hair = 0.125
+    return design("MF Stamp", [
+        {"id": "perforation", "type": "perforation", "x": L, "y": T, "w": W, "h": B - T, "pitch": 1.25, "radius": 0.4, "stroke": hair},
+        line("in-top", xi0, yi0, xi1 - xi0, hair), line("in-bottom", xi0, yi1 - hair, xi1 - xi0, hair),
+        line("in-left", xi0, yi0, hair, yi1 - yi0), line("in-right", xi1 - hair, yi0, hair, yi1 - yi0),
+        # the vignette: a record with grooves, a black label and a spindle hole
+        ellipse("disc", 5.2, 5.2, disc, disc, rings=7, ring_gap=0.5),
+        ellipse("disc-label", round(cx - 1.7, 2), round(cy - 1.7, 2), 3.4, 3.4, fill="black", stroke=0),
+        ellipse("disc-hole", round(cx - 0.3, 2), round(cy - 0.3, 2), 0.6, 0.6, fill="white", stroke=0),
+        # the postmark over the vignette's corner: a white double ring with the year in it
+        ellipse("postmark", round(pcx - pm / 2, 2), round(pcy - pm / 2, 2), pm, pm, fill="white", stroke=hair, rings=1, ring_gap=0.4),
+        text("pm-name", "MF", SEMI, 6.5, pcx - 2.8, 5.6, pcy - 0.5, align="center", min_pt=5),
+        text("pm-year", "{year}", MED, 5, pcx - 2.8, 5.6, pcy + 1.6, align="center", min_pt=4, blank="–"),
+        # the denomination, a rule, then the name
+        text("price", "{price}", SEMI, 11, rx, rw, 8.8, align="right", min_pt=7),
+        line("rule", rx, 10.0, rw, hair),
+        flow("artist", "{artist}", SEMI, 8, rx, rw, 12.7, 15.9, min_pt=6.5),
+        flow("title", "{title}", MED, 6.5, rx, rw, 12.7, 18.6, min_pt=5.5, after="artist", gap=2.7),
+        # the foot line, then the barcode
+        text("format", "{format}", SEMI, 5.5, 5.2, 9.0, 20.7, upper=True, min_pt=4.5, blank="–"),
+        text("genre", "{genre}", MED, 5.5, 15.0, 13.0, 20.7, upper=True, first_item=True, min_pt=4.5, blank="–"),
+        text("sku", "{sku}", MONO, 5, 28.5, xi1 - 0.8 - 28.5, 20.7, align="right", min_pt=4.5),
+        barcode(5.2, 22.0, xi1 - 0.8 - 5.2, 3.4),
+    ])
+
+
+def passport():
+    """After old passports: tiny capital labels over every value, the seal beside the price, and the two machine-readable
+    lines (36 characters each, like an ID card) at the foot, carrying the artist and title, then SKU, format, year and price."""
+    inset_r = W - MINI_W
+    col = 31.5                                   # the price column
+    return design("MF Passport", [
+        text("l-name", "Artist / Title", REG, 4.5, L, 28, 4.8, upper=True),
+        flow("artist", "{artist}", SEMI, 8, L, col - L - 1.2, 7.8, 10.8, min_pt=6.5),
+        flow("title", "{title}", MED, 6.8, L, col - L - 1.2, 7.8, 13.4, min_pt=5.5, after="artist", gap=2.6),
+        text("l-price", "Price", REG, 4.5, col, R - col, 4.8, upper=True, align="right"),
+        text("price", "{price}", SEMI, 10, col, R - col, 8.4, align="right", min_pt=6),
+        {"id": "symbol", "type": "image", "src": "symbol", "x": round(R - MINI_W, 2), "y": 9.6, "w": MINI_W, "h": MINI_H},
+        text("l-format", "Format", REG, 4.5, L, 10, 16.4, upper=True),
+        text("format", "{format}", MED, 6.5, L, 10, 18.7, upper=True, min_pt=5, blank="–"),
+        text("l-year", "Year", REG, 4.5, 13.0, 8, 16.4, upper=True),
+        text("year", "{year}", MED, 6.5, 13.0, 8, 18.7, min_pt=5, blank="–"),
+        text("l-genre", "Genre", REG, 4.5, 21.5, 26, 16.4, upper=True),
+        text("genre", "{genre}", MED, 6.5, 21.5, 26, 18.7, min_pt=5, first_item=True, blank="–"),
+        barcode(L, 19.7, W, 3.9),
+        text("mrz1", "R<MFX{artist}<<{title}", MONO_REG, 5.9, L, W, 25.3, min_pt=4.5, mrz=36),
+        text("mrz2", "{sku}<{format}<{year}<{price}", MONO_REG, 5.9, L, W, 27.4, min_pt=4.5, mrz=36),
+    ])
+
+
 FILES = {"mf-brand-ledger": ledger, "mf-brand-barcode-foot": barcode_foot, "mf-brand-symbol-column": symbol_column,
-         "mf-concept-catalogue-line": catalogue_line, "mf-concept-price-card": price_card, "mf-concept-format-tile": format_tile}
+         "mf-concept-catalogue-line": catalogue_line, "mf-concept-price-card": price_card, "mf-concept-format-tile": format_tile,
+         "mf-stamp": stamp, "mf-passport": passport}
 
 
 def main() -> int:
