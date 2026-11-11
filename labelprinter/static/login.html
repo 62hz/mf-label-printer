@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MF Label Printer</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login">
+<main>
+  <h1>MF Label Printer</h1>
+  <form method="post" action="/login">
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" autofocus required>
+    <p id="bad" class="error" hidden>Wrong password.</p>
+    <button type="submit">Sign in</button>
+  </form>
+</main>
+<script>
+  if (new URLSearchParams(location.search).get("bad")) document.getElementById("bad").hidden = false;
+</script>
+</body>
+</html>
