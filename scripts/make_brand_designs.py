@@ -22,7 +22,7 @@ PX_PER_PT = DPM * 25.4 / 72
 
 L, R, T, B = 2.5, 47.5, 2.5, 27.5     # live area
 W = R - L
-SEMI, MED, REG = "dm-sans-semibold", "dm-sans-medium", "dm-sans"
+SEMI, MED, REG, LIGHT = "dm-sans-semibold", "dm-sans-medium", "dm-sans", "dm-sans-light"
 SYMBOL_W, SYMBOL_H = 6.0, 6.66        # the symbol at its 6 mm minimum, in its own proportions
 CAP = 0.7                             # DM Sans cap height in em
 
@@ -142,8 +142,8 @@ def catalogue_line():
     ])
 
 
-def artist_at(baseline, x=L, w=W, pt=12):
-    return text("artist", "{artist}", SEMI, pt, x, w, baseline, min_pt=6.5)
+def artist_at(baseline, x=L, w=W, pt=12, min_pt=6.5):
+    return text("artist", "{artist}", SEMI, pt, x, w, baseline, min_pt=min_pt)
 
 
 def price_card():
@@ -151,25 +151,26 @@ def price_card():
     col = L + 6.5                      # right edge of the barcode column
     c = col + 0.5                      # left edge of the cells
     pad = 0.8
-    r1, r2, r3 = 9.0, 15.0, 21.0       # row lines
+    r1, r2, r3 = 10.0, 15.5, 21.25     # row lines (the artist row is taller: it carries the symbol)
     f_end, y_end = 23.0, 32.0          # cell lines in the format row
     p_start = 30.0                     # cell line in the last row
 
     def label_(eid, words, x, base):
-        return text(eid, words, MED, 5, x + pad, 12, base, upper=True)
+        return text(eid, words, LIGHT, 5, x + pad, 12, base, upper=True)   # cell names: Light, so the information reads first
 
     return design("MF Price card", [
         {"id": "barcode", "type": "barcode", "content": "{sku}", "x": L, "y": T, "w": 5.5, "h": B - T, "mode": "integer", "rotate": 90},
         line("col", col, T, 0.25, B - T),
         line("r1", c, r1, R - c, 0.25), line("r2", c, r2, R - c, 0.25), line("r3", c, r3, R - c, 0.25),
         line("v-format", f_end, r2, 0.25, r3 - r2), line("v-year", y_end, r2, 0.25, r3 - r2), line("v-price", p_start, r3, 0.25, B - r3),
-        label_("l-artist", "Artist", c, T + 2.0), artist_at(r1 - 1.0, c + pad, R - c - 2 * pad, pt=10),
-        label_("l-title", "Title", c, r1 + 2.0), text("title", "{title}", REG, 8, c + pad, R - c - 2 * pad, r2 - 1.0, min_pt=5),
+        label_("l-artist", "Artist", c, T + 2.0), artist_at(r1 - 1.0, c + pad, R - SYMBOL_W - 1.0 - c - pad, pt=10, min_pt=5.5),
+        symbol(R - SYMBOL_W, T + round((r1 - T - SYMBOL_H) / 2, 2)),
+        label_("l-title", "Title", c, r1 + 2.0), text("title", "{title}", MED, 8, c + pad, R - c - 2 * pad, r2 - 1.0, min_pt=5),
         label_("l-format", "Format", c, r2 + 2.0), text("format", "{format}", MED, 8, c + pad, f_end - c - 2 * pad, r3 - 1.0, min_pt=5, upper=True),
         label_("l-year", "Year", f_end, r2 + 2.0), text("year", "{year}", MED, 8, f_end + pad, y_end - f_end - 2 * pad, r3 - 1.0, min_pt=5),
-        label_("l-genre", "Genre", y_end, r2 + 2.0), text("genre", "{genre}", REG, 8, y_end + pad, R - y_end - 2 * pad, r3 - 1.0, min_pt=5),
-        label_("l-sku", "SKU", c, r3 + 2.0), text("sku", "{sku}", REG, 6, c + pad, p_start - c - 2 * pad, B - 1.0, min_pt=5),
-        label_("l-price", "Price", p_start, r3 + 2.0), text("price", "{price}", MED, 10, p_start + pad, R - p_start - pad, B - 1.0, align="right", min_pt=7),
+        label_("l-genre", "Genre", y_end, r2 + 2.0), text("genre", "{genre}", MED, 8, y_end + pad, R - y_end - 2 * pad, r3 - 1.0, min_pt=5),
+        label_("l-sku", "SKU", c, r3 + 2.0), text("sku", "{sku}", MED, 6, c + pad, p_start - c - 2 * pad, B - 1.0, min_pt=5),
+        label_("l-price", "Price", p_start, r3 + 2.0), text("price", "{price}", SEMI, 10, p_start + pad, R - p_start - pad, B - 1.0, align="right", min_pt=7),
     ])
 
 

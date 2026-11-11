@@ -196,7 +196,7 @@ def with_font(key):
 def test_fonts_api_lists_installed_and_bundled_families(font_client):
     body = font_client.get("/api/fonts").json()
     by_key = {f["key"]: f for f in body["fonts"]}
-    assert set(by_key) == {"arial", "calibri", "dm-sans", "dm-sans-medium", "dm-sans-semibold"}
+    assert set(by_key) == {"arial", "calibri", "dm-sans", "dm-sans-light", "dm-sans-medium", "dm-sans-semibold"}
     assert by_key["dm-sans"] == {"key": "dm-sans", "name": "DM Sans", "source": "bundled", "styles": ["regular", "bold"]}
     assert by_key["arial"]["source"] == "system" and by_key["arial"]["styles"] == ["regular", "bold", "italic", "bolditalic"]
 
@@ -247,4 +247,4 @@ def test_only_added_fonts_can_be_removed_and_odd_keys_are_404(font_client, key):
     r = font_client.delete("/api/fonts/" + key)
     assert r.status_code == 404
     assert (fonts.SYSTEM_DIR / "arial.ttf").exists() and (fonts.BUNDLED_DIR / "DMSans-Regular.ttf").exists()
-    assert {f["key"] for f in font_client.get("/api/fonts").json()["fonts"]} == {"arial", "calibri", "dm-sans", "dm-sans-medium", "dm-sans-semibold"}
+    assert {f["key"] for f in font_client.get("/api/fonts").json()["fonts"]} == {"arial", "calibri", "dm-sans", "dm-sans-light", "dm-sans-medium", "dm-sans-semibold"}

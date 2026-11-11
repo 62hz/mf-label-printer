@@ -21,7 +21,7 @@ SOURCE = ROOT / "labelprinter" / "static" / "fonts" / "dmsans-latin.woff"
 OUT_DIR = ROOT / "labelprinter" / "fonts"
 FAMILY = "DM Sans"
 # The brand uses three weights (SemiBold titles, Medium labels and prices, Regular text); Bold stays for the old designs.
-CUTS = (("Regular", 400, False), ("Medium", 500, False), ("SemiBold", 600, False), ("Bold", 700, True))
+CUTS = (("Light", 300, False), ("Regular", 400, False), ("Medium", 500, False), ("SemiBold", 600, False), ("Bold", 700, True))
 # name ids that would make FreeType (and so Pillow) report something other than FAMILY + style
 DROP_NAME_IDS = {16, 17, 21, 22, 25}
 

@@ -133,7 +133,7 @@ def main():
             groups = lambda: page.eval_on_selector_all(font_select + " optgroup", "els => els.map(e => e.label)")
             assert groups() == ["Brand", "Installed"], groups()
             page.fill('#props input[data-role="font-filter"]', "dm")
-            expect(page.locator(font_select + " option")).to_have_count(4)                # the three DM Sans weights, and the chosen Arial stays listed
+            expect(page.locator(font_select + " option")).to_have_count(5)                # the four DM Sans weights, and the chosen Arial stays listed
             with page.expect_request(lambda r: r.url.endswith("/api/label.png") and '"font":"dm-sans"' in (r.post_data or "")):
                 page.select_option(font_select, label="DM Sans")
             expect(page.locator('#props button[data-role="font-remove"]')).to_be_hidden()  # the brand font cannot be removed

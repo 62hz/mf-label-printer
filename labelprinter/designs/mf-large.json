@@ -145,7 +145,7 @@
     {
       "id": "logo",
       "type": "image",
-      "src": "logo",
+      "src": "symbol",
       "x": 33.5,
       "y": 17.5,
       "w": 15.5,
