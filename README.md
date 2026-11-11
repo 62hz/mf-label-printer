@@ -1,0 +1,75 @@
+# MF Label Printer
+
+Web app that makes Medium Format 50 x 30 mm barcode labels from DealPOS data or a Barcode Templater sheet, lets you change the label design, and prints through the iPhone 4Barcode app (PDF or Excel) or straight to the XP-TT426B over USB from the store tablet. Spec: `~/.claude/docs/specs/2026-11-11-mf-label-printer-design.md`.
+
+It only reads DealPOS. Writes are refused in code (`read_only=True`, tested).
+
+## Run it
+
+Check without DealPOS or printer (fake data, throwaway designs):
+
+```bash
+uv run python scripts/dev_server.py        # http://127.0.0.1:8795  password: devpassword
+uv run python scripts/ui_smoke.py          # drives the page in Chromium, mocked USB printer
+```
+
+Real (start from the Terminal panel, not as a background task of a Claude session):
+
+```bash
+vault run dealpos mf-label-printer -- uv run python -m labelprinter.server --port 8794
+```
+
+`vault` is found in PowerShell and the Terminal panel; Git Bash does not see it (use `vault.cmd` there).
+
+Needs vault project `dealpos` (DealPOS keys, exists) and project `mf-label-printer` with `LABELPRINTER_PASSWORD` (8+ characters). Django sets that himself: `vault set mf-label-printer LABELPRINTER_PASSWORD`.
+
+## Reach it from the store
+
+Port 8794 is local only. The store tablet and phones use Tailscale Funnel on port 10000 (443 and 8443 belong to other apps; never touch them):
+
+```bash
+tailscale funnel --bg --https=10000 http://127.0.0.1:8794    # on: needs Django's OK, it is public behind the password
+tailscale funnel --https=10000 off                           # off
+```
+
+URL: `https://YOUR-HOST.ts.net:10000`. The server is up only while this PC runs it. If it is down, use 4barcode-desktop and the Excel as before.
+
+## Designs
+
+A design is the label layout in millimetres: label size, gap, direction and a list of elements (text, barcode, line or box, logo). Built in and read-only: **MF April** (your April layout, 6 pt text), **MF Large** (bigger type), **MF Scan-safe** (2-dot barcode, smaller logo). Open "Edit the design" in the page, change elements by number, then Save or Save as. Your designs are files in `data/designs/`. Preview, PDF and USB print all use the design on screen, saved or not.
+
+Barcode rule: bars print cleanly only when every bar is a whole number of printer dots. Mode `integer` guarantees that (1 dot = 0.125 mm, 2 dots = 0.25 mm). Mode `fit` stretches to the width you give, so bars alternate between 1 and 2 dots; the page warns about it. Run the scan test (below) before choosing.
+
+## Printing
+
+- **iPhone (main):** Download PDF, open it in the 4Barcode app (Files, Share, 4Barcode), print over Bluetooth. Page size is exactly 50 x 30 mm.
+- **Excel (fallback):** Download Excel, use it with your existing 4Barcode design as before.
+- **USB (tablet):** Chrome on the Android tablet, printer on a USB OTG cable, press Print over USB. The first press of a session prints 1 label; press again for the rest. Test labels: orientation label plus a scan-test label with the same barcode as A (1 dot), B (stretched), C (2 dots). Scan A, B, C with the POS scanner and keep the design whose barcode reads.
+- **Test labels (PDF)** gives the same two test labels for the iPhone route.
+
+## After the first real test print (set what you saw)
+
+| You see | Fix |
+|---|---|
+| Black and white swapped | start the server with `LABELPRINTER_INVERT=1` |
+| Image upside down or mirrored | design, Label, Direction 0 or 1, Save |
+| Labels drift or skip | design, Label, Gap (mm), match the roll |
+| Barcode A or B will not scan, C does | use MF Scan-safe: start the server with `LABELPRINTER_DEFAULT_DESIGN=mf-scan-safe` so the page opens with it, or make the barcode element 2 dots wide |
+| Text cut at the edge | move or narrow the element, the preview shows the exact print |
+
+Record what worked here once known: _not tested on a unit yet_.
+
+## Command line
+
+```bash
+vault run dealpos -- uv run python scripts/labels_cli.py AMEAMET158 ALEHEAC557 --copies 2 --design mf-april
+vault run dealpos -- uv run python scripts/live_check.py AMEAMET158 ALEHEAC557     # read-only, shows what each label would say
+uv run python scripts/make_samples.py "C:/Users/SER5 MAX/Documents/#MEDFOR/04APR/Barcode Templater April.xlsx" 9
+```
+
+## Notes
+
+- Year and genre come from the DealPOS description (`Released: 2019`, `Genre: Rock`), which only newer products have. A year at the end of the title, like `Immunity (2019)`, moves to the year chip. Missing fields show amber and print blank; edit them in the table.
+- DealPOS allows 50 requests per 180 s; the app paces itself (45). Year and genre lookups are one request per product and cached for a day.
+- Fonts are the Windows fonts on this PC (`C:/Windows/Fonts`); set `LABEL_FONT_DIR` to use another folder.
+- Tests: `uv run pytest -q`.
