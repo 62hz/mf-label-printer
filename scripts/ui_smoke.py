@@ -3,6 +3,7 @@ with a mocked WebUSB printer. Prints 'UI SMOKE OK' or fails with the first broke
 
   uv run python scripts/ui_smoke.py
 """
+import os
 import socket
 import subprocess
 import sys
@@ -13,6 +14,7 @@ import pymupdf
 from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
+FONT_DIR = Path(os.environ.get("LABEL_FONT_DIR", "C:/Windows/Fonts"))
 PORT = 8795
 URL = f"http://127.0.0.1:{PORT}"
 
@@ -113,6 +115,31 @@ def main():
             with page.expect_request(lambda r: r.url.endswith("/api/label.png") and '"size_pt":9' in (r.post_data or "")):
                 page.fill('#props input[data-key="size_pt"]', "9")
             expect(page.locator("#dirty")).to_be_visible()
+
+            # ---- fonts: filter, pick DM Sans, add a font file, remove it again
+            font_select = '#props select[data-key="font"]'
+            expect(page.locator(font_select)).to_have_value("arial")
+            groups = lambda: page.eval_on_selector_all(font_select + " optgroup", "els => els.map(e => e.label)")
+            assert groups() == ["Brand", "Installed"], groups()
+            page.fill('#props input[data-role="font-filter"]', "dm")
+            expect(page.locator(font_select + " option")).to_have_count(2)                # DM Sans, and the chosen Arial stays listed
+            with page.expect_request(lambda r: r.url.endswith("/api/label.png") and '"font":"dm-sans"' in (r.post_data or "")):
+                page.select_option(font_select, label="DM Sans")
+            expect(page.locator('#props button[data-role="font-remove"]')).to_be_hidden()  # the brand font cannot be removed
+            sample = next((p for p in (FONT_DIR / "tahoma.ttf", FONT_DIR / "verdana.ttf") if p.exists()), None)
+            if sample:
+                with page.expect_request(lambda r: r.url.endswith("/api/label.png") and '"font":"' + sample.stem + '"' in (r.post_data or "")):
+                    page.set_input_files('#props input[data-role="font-file"]', str(sample))
+                expect(page.locator("#msg")).to_contain_text("Added the font " + sample.stem.capitalize())
+                expect(page.locator(font_select)).to_have_value(sample.stem)
+                assert groups() == ["Brand", "Your fonts", "Installed"], groups()
+                expect(page.locator('#props button[data-role="font-remove"]')).to_be_visible()
+                page.click('#props button[data-role="font-remove"]')                       # confirm dialog is accepted above
+                expect(page.locator("#msg")).to_contain_text("Removed the font " + sample.stem.capitalize())
+                expect(page.locator('#props button[data-role="font-remove"]')).to_be_hidden()   # the installed copy is still there
+                assert groups() == ["Brand", "Installed"], groups()
+                with page.expect_request(lambda r: r.url.endswith("/api/label.png") and '"font":"dm-sans"' in (r.post_data or "")):
+                    page.select_option(font_select, label="DM Sans")
             with page.expect_request(lambda r: r.url.endswith("/api/label.png") and '"visible":false' in (r.post_data or "")):
                 page.locator("#elList li", has_text="logo").locator("input[type=checkbox]").uncheck()
             page.locator("#elList li", has_text="barcode").locator("button.elname").click()

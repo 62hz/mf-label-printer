@@ -12,7 +12,7 @@ import pytest
 from PIL import Image, ImageDraw
 from starlette.testclient import TestClient
 
-from labelprinter import auth, outputs, render, server, tspl
+from labelprinter import auth, fonts, outputs, render, server, tspl
 from labelprinter.catalog import Catalog
 from labelprinter.designs import DesignStore
 from labelprinter.model import Label
@@ -20,6 +20,7 @@ from labelprinter.server import create_app
 from tests.fakes import FakeClient, design
 
 PASSWORD = "correct-horse"
+ARIAL = fonts.resolve("arial")  # the font file the fit tests measure with
 
 
 def make_client(tmp_path, fake=None, **kwargs):
@@ -184,18 +185,18 @@ def _reference_fit(draw, text, name, max_px, avail, min_px):
 @pytest.mark.parametrize("max_px,min_px", [(16.93, 11.29), (28.2, 5.6), (11.29, 11.29), (40.0, 5.64)])
 def test_f3_fit_matches_the_slow_reference(text, avail, max_px, min_px):
     draw = _draw()
-    got_text, got_font = render.fit(draw, text, "arial.ttf", max_px, avail, min_px)
-    want_text, want_px = _reference_fit(draw, text, "arial.ttf", max_px, avail, min_px)
+    got_text, got_font = render.fit(draw, text, ARIAL, max_px, avail, min_px)
+    want_text, want_px = _reference_fit(draw, text, ARIAL, max_px, avail, min_px)
     assert (got_text, got_font.size) == (want_text, want_px)
 
 
 def test_f3_fit_leaves_text_that_already_fits_alone_and_cuts_with_dots_at_the_minimum_size():
     draw = _draw()
-    text, f = render.fit(draw, "Hi", "arial.ttf", 20, 400, 8)
+    text, f = render.fit(draw, "Hi", ARIAL, 20, 400, 8)
     assert text == "Hi" and f.size == 20
-    cut, f = render.fit(draw, "A" * 5000, "arial.ttf", 20, 100, 8)
+    cut, f = render.fit(draw, "A" * 5000, ARIAL, 20, 100, 8)
     assert cut.endswith("...") and f.size == 8 and draw.textlength(cut, font=f) <= 100 and len(cut) > 3
-    assert render.fit(draw, "A" * 50, "arial.ttf", 20, 1, 8)[0] == "..."  # not even the dots fit
+    assert render.fit(draw, "A" * 50, ARIAL, 20, 1, 8)[0] == "..."  # not even the dots fit
 
 
 def test_f3_every_render_runs_in_a_worker_thread_not_on_the_event_loop(tmp_path, monkeypatch):

@@ -19,7 +19,8 @@ const DEFAULTS = {
 };
 
 let designList = [];
-let fonts = [];
+let fonts = [];           // font families from /api/fonts: {key, name, source: bundled|custom|system, styles}
+let fontsLoaded = false;
 let selEl = 0;
 let designDirty = false;
 let savedSlug = null;
@@ -39,8 +40,114 @@ function field(labelText, control) {
   return wrap;
 }
 
+// ---- font picker: a filter box, a select grouped Brand / Your fonts / Installed, add a font file, remove an added one
+
+const FONT_GROUPS = [["bundled", "Brand"], ["custom", "Your fonts"], ["system", "Installed"]];
+
+function fontOption(value, text) {
+  const opt = document.createElement("option");
+  opt.value = value; opt.textContent = text;
+  return opt;
+}
+
+function fontMatches(f, query) {
+  return !query || f.name.toLowerCase().includes(query) || f.key.includes(query);
+}
+
+function fillFontSelect(select, filterText, current) {
+  const query = filterText.trim().toLowerCase();
+  select.replaceChildren();
+  if (!fonts.some((f) => f.key === current)) {   // the design names a font this PC does not have: say so instead of showing another one
+    if (fontsLoaded) {
+      const group = document.createElement("optgroup");
+      group.label = "Not installed here";
+      group.appendChild(fontOption(current, current));
+      select.appendChild(group);
+    } else {
+      select.appendChild(fontOption(current, current));
+    }
+  }
+  for (const [source, title] of FONT_GROUPS) {
+    const list = fonts.filter((f) => f.source === source && (f.key === current || fontMatches(f, query)));  // the chosen font always stays listed
+    if (!list.length) continue;
+    const group = document.createElement("optgroup");
+    group.label = title;
+    for (const f of list) group.appendChild(fontOption(f.key, f.name));
+    select.appendChild(group);
+  }
+  select.value = current;
+}
+
+async function loadFonts() {
+  fonts = (await (await api("/api/fonts")).json()).fonts;
+  fontsLoaded = true;
+}
+
+function fontControl(obj, key, onChange) {
+  const wrap = document.createElement("div");
+  wrap.className = "fontpick";
+  const filter = document.createElement("input");
+  filter.type = "search"; filter.placeholder = "Filter fonts"; filter.autocomplete = "off";
+  filter.setAttribute("aria-label", "Filter fonts"); filter.dataset.role = "font-filter";
+  const select = document.createElement("select");
+  select.setAttribute("aria-label", "Font"); select.dataset.key = key;
+  const remove = document.createElement("button");
+  remove.type = "button"; remove.className = "ghost"; remove.textContent = "Remove"; remove.dataset.role = "font-remove";
+  remove.title = "Remove this added font";
+  const row = document.createElement("div");
+  row.className = "fontrow";
+  row.append(select, remove);
+  const add = document.createElement("button");
+  add.type = "button"; add.className = "ghost"; add.textContent = "Add a font file"; add.dataset.role = "font-add";
+  const file = document.createElement("input");
+  file.type = "file"; file.accept = ".ttf,.otf"; file.hidden = true; file.dataset.role = "font-file";
+  const current = () => fonts.find((f) => f.key === obj[key]);
+  const sync = () => { remove.hidden = current()?.source !== "custom"; };
+  fillFontSelect(select, "", obj[key]);
+  sync();
+
+  filter.addEventListener("input", () => fillFontSelect(select, filter.value, obj[key]));
+  filter.addEventListener("keydown", (ev) => {      // Enter takes the first match
+    if (ev.key !== "Enter") return;
+    ev.preventDefault();
+    const query = filter.value.trim().toLowerCase();
+    const hit = FONT_GROUPS.flatMap(([source]) => fonts.filter((f) => f.source === source && fontMatches(f, query)))[0];
+    if (!hit) return;
+    obj[key] = hit.key;
+    fillFontSelect(select, filter.value, obj[key]);
+    sync(); onChange();
+  });
+  select.addEventListener("change", () => { obj[key] = select.value; sync(); onChange(); });
+  add.addEventListener("click", () => file.click());
+  file.addEventListener("change", async () => {
+    const chosen = file.files[0];
+    if (!chosen) return;
+    const form = new FormData();
+    form.append("file", chosen);
+    try {
+      const res = await (await api("/api/fonts", { method: "POST", body: form })).json();
+      fonts = res.fonts; obj[key] = res.key;
+      note("Added the font " + (current()?.name ?? res.key) + ".");
+      renderProps(); markDirty();
+    } catch (e) { note(e.message, true); }
+    file.value = "";
+  });
+  remove.addEventListener("click", async () => {
+    const font = current();
+    if (!font || !confirm("Remove the font " + font.name + "? Labels that use it print in Arial until you pick another.")) return;
+    try {
+      fonts = (await (await api("/api/fonts/" + encodeURIComponent(font.key), { method: "DELETE" })).json()).fonts;
+      note("Removed the font " + font.name + ".");
+      renderProps(); schedulePreview();
+    } catch (e) { note(e.message, true); }
+  });
+  wrap.append(filter, row, add, file);
+  return wrap;
+}
+
 function control(obj, key, kind, onChange) {
   let input;
+  if (kind === "fonts") return fontControl(obj, key, onChange);
   if (kind === "text") {
     input = document.createElement("input");
     input.value = obj[key] ?? "";
@@ -56,8 +163,7 @@ function control(obj, key, kind, onChange) {
     input.addEventListener("change", () => { obj[key] = input.checked; onChange(); });
   } else {
     input = document.createElement("select");
-    const options = kind === "fonts" ? fonts : kind;
-    for (const o of options) { const opt = document.createElement("option"); opt.value = o; opt.textContent = o; input.appendChild(opt); }
+    for (const o of kind) { const opt = document.createElement("option"); opt.value = o; opt.textContent = o; input.appendChild(opt); }
     input.value = obj[key];
     input.addEventListener("change", () => { obj[key] = input.value; onChange(); });
   }
@@ -135,7 +241,7 @@ async function openDesign(slug) {
 
 async function loadDesigns(pick) {
   const data = await (await api("/api/designs")).json();
-  designList = data.designs; fonts = data.fonts;
+  designList = data.designs;
   const slug = [pick, savedSlug, data.default].find((s) => s && designList.some((d) => d.slug === s));
   await openDesign(slug);
 }
@@ -188,3 +294,4 @@ $("elDel").addEventListener("click", () => {
 });
 
 loadDesigns().catch((e) => note(e.message, true));
+loadFonts().then(() => { if (design) renderProps(); }).catch((e) => note(e.message, true));   // the list arrives once; again only after an upload or a removal

@@ -71,6 +71,6 @@ uv run python scripts/make_samples.py "C:/Users/SER5 MAX/Documents/#MEDFOR/04APR
 
 - Year and genre come from the DealPOS description (`Released: 2019`, `Genre: Rock`), which only newer products have. A year at the end of the title, like `Immunity (2019)`, moves to the year chip. Missing fields show amber and print blank; edit them in the table.
 - DealPOS allows 50 requests per 180 s; the app paces itself (45). Year and genre lookups are one request per product and cached for a day.
-- Fonts are the Windows fonts on this PC (`C:/Windows/Fonts`); set `LABEL_FONT_DIR` to use another folder.
+- Fonts: a text element can use any font installed on this PC (`C:/Windows/Fonts`; set `LABEL_FONT_DIR` to use another folder), DM Sans (the MF brand font, bundled in `labelprinter/fonts`), or a `.ttf` / `.otf` file you add with "Add a font file" in the design editor (kept in `data/fonts`, 5 MB each; added fonts get a Remove button). Light, Black and other weights are listed as their own fonts ("Lato Light"). A design that names a font this PC does not have still prints, in Arial, and the page says so. `py scripts/make_dmsans.py` regenerates the DM Sans files (needs fontTools, only for that script).
 - Static files (page code and fonts) are public; every data and download route needs the login cookie.
 - Tests: `uv run pytest -q`.

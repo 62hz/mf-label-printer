@@ -1,4 +1,5 @@
 import io
+import shutil
 from pathlib import Path
 
 import openpyxl
@@ -7,6 +8,7 @@ import pytest
 from PIL import Image
 from starlette.testclient import TestClient
 
+from labelprinter import fonts, server
 from labelprinter.catalog import Catalog
 from labelprinter.designs import DesignStore
 from labelprinter.server import MAX_ROWS, MAX_TOTAL, create_app
@@ -32,12 +34,13 @@ def signed_in(client):
 
 def test_everything_is_closed_until_login(client):
     assert client.get("/").status_code == 303 and client.get("/").headers["location"] == "/login"
-    for path in ("/api/status", "/api/search?q=a", "/api/test.tspl", "/api/test.pdf", "/api/designs", "/api/designs/mf-april"):
+    for path in ("/api/status", "/api/search?q=a", "/api/test.tspl", "/api/test.pdf", "/api/designs", "/api/designs/mf-april", "/api/fonts"):
         assert client.get(path).status_code == 401
     for path in ("/api/resolve", "/api/labels.pdf", "/api/labels.xlsx", "/api/labels.tspl", "/api/label.png", "/api/sheet",
-                 "/api/enrich", "/api/designs"):
+                 "/api/enrich", "/api/designs", "/api/fonts"):
         assert client.post(path, json={}).status_code == 401
     assert client.delete("/api/designs/x").status_code == 401
+    assert client.delete("/api/fonts/x").status_code == 401
     assert client.get("/login").status_code == 200
     assert client.get("/static/style.css").status_code == 200
 
@@ -80,14 +83,29 @@ def test_label_png_uses_the_default_design_a_slug_or_an_inline_design(signed_in)
     assert signed_in.post("/api/label.png", json={"label": LABEL, "design": inline}).content != r.content
     assert signed_in.post("/api/label.png", json={"label": LABEL, "design": "nope"}).status_code == 400
     bad = design("mf-april")
-    bad["elements"][0]["font"] = "comic"
+    bad["elements"][0]["font"] = "Comic Sans!"            # not a font key at all
     assert "font" in signed_in.post("/api/label.png", json={"label": LABEL, "design": bad}).json()["error"]
+
+
+def test_a_font_that_is_not_installed_renders_with_a_note(signed_in):
+    ghost = design("mf-april")
+    ghost["elements"][0]["font"] = "comic"
+    r = signed_in.post("/api/label.png", json={"label": LABEL, "design": ghost})
+    assert r.status_code == 200 and Image.open(io.BytesIO(r.content)).size == (400, 240)
+    assert "Font 'comic' is not installed here, using Arial." in r.headers["x-label-notes"]
+
+
+def test_notes_with_non_latin_text_still_make_a_valid_header(signed_in, monkeypatch):
+    monkeypatch.setattr(server, "notes", lambda label, design: ["Zażółć gęślą jaźń Привет 中文", "line\r\nbreak"])
+    r = signed_in.post("/api/label.png", json={"label": LABEL})
+    assert r.status_code == 200 and "\r" not in r.headers["x-label-notes"] and "\n" not in r.headers["x-label-notes"]
+    assert r.headers["x-label-notes"].startswith("Za")
 
 
 def test_designs_api_list_get_save_delete(signed_in):
     body = signed_in.get("/api/designs").json()
     assert body["default"] == "mf-april" and [d["slug"] for d in body["designs"]][:3] == ["mf-april", "mf-large", "mf-scan-safe"]
-    assert "arial" in body["fonts"]
+    assert "fonts" not in body                                       # the font list has its own route: /api/fonts
     assert signed_in.get("/api/designs/mf-april").json()["width_mm"] == 50
     assert signed_in.get("/api/designs/nope").status_code == 404
     mine = design("mf-april")
@@ -148,3 +166,85 @@ def test_dealpos_errors_become_a_502_with_the_message():
     c.post("/login", data={"password": PASSWORD})
     for r in (c.get("/api/status"), c.post("/api/resolve", json={"text": "A"}), c.get("/api/search?q=abc")):
         assert r.status_code == 502 and "boom" in r.json()["error"]
+
+
+# ---------------------------------------------------------------- fonts
+
+@pytest.fixture
+def font_client(tmp_path, monkeypatch):
+    """Signed in, with a font registry whose system folder holds only Arial and Calibri, so Verdana is new when uploaded."""
+    system = tmp_path / "system"
+    system.mkdir()
+    for name in ("arial.ttf", "arialbd.ttf", "ariali.ttf", "arialbi.ttf", "calibri.ttf", "calibrib.ttf", "calibrii.ttf", "calibriz.ttf"):
+        shutil.copy(Path("C:/Windows/Fonts") / name, system / name)
+    monkeypatch.setattr(fonts, "default", fonts.FontRegistry(system, tmp_path / "custom", fonts.BUNDLED_DIR))
+    app = create_app(Catalog(FakeClient()), PASSWORD, b"k" * 32, DesignStore(tmp_path / "designs"))
+    c = TestClient(app, follow_redirects=False)
+    assert c.post("/login", data={"password": PASSWORD}).status_code == 303
+    return c
+
+
+VERDANA = Path("C:/Windows/Fonts/verdana.ttf")
+
+
+def with_font(key):
+    d = design("mf-april")
+    d["elements"][0]["font"] = key
+    return d
+
+
+def test_fonts_api_lists_installed_and_bundled_families(font_client):
+    body = font_client.get("/api/fonts").json()
+    by_key = {f["key"]: f for f in body["fonts"]}
+    assert set(by_key) == {"arial", "calibri", "dm-sans"}
+    assert by_key["dm-sans"] == {"key": "dm-sans", "name": "DM Sans", "source": "bundled", "styles": ["regular", "bold"]}
+    assert by_key["arial"]["source"] == "system" and by_key["arial"]["styles"] == ["regular", "bold", "italic", "bolditalic"]
+
+
+def test_upload_use_and_remove_a_font(font_client):
+    if not VERDANA.exists():
+        pytest.skip("needs verdana.ttf")
+    r = font_client.post("/api/fonts", files={"file": ("../../My Verdana.ttf", VERDANA.read_bytes(), "font/ttf")})
+    assert r.status_code == 200 and r.json()["key"] == "verdana"
+    added = {f["key"]: f for f in r.json()["fonts"]}["verdana"]
+    assert added["source"] == "custom" and added["name"] == "Verdana"
+    assert {f["key"] for f in font_client.get("/api/fonts").json()["fonts"]} >= {"verdana", "dm-sans"}
+    arial = font_client.post("/api/label.png", json={"label": LABEL, "design": with_font("arial")})
+    with_verdana = font_client.post("/api/label.png", json={"label": LABEL, "design": with_font("verdana")})
+    assert with_verdana.status_code == 200 and with_verdana.content != arial.content
+    assert "not installed" not in with_verdana.headers["x-label-notes"]
+    gone = font_client.delete("/api/fonts/verdana")
+    assert gone.status_code == 200 and gone.json()["deleted"] == "verdana" and "verdana" not in {f["key"] for f in gone.json()["fonts"]}
+    assert font_client.delete("/api/fonts/verdana").status_code == 404
+    after = font_client.post("/api/label.png", json={"label": LABEL, "design": with_font("verdana")})
+    assert after.status_code == 200 and "Font 'verdana' is not installed here, using Arial." in after.headers["x-label-notes"]
+
+
+def test_a_bad_upload_is_a_400_with_the_reason(font_client):
+    r = font_client.post("/api/fonts", files={"file": ("notes.ttf", b"plain text, not a font", "font/ttf")})
+    assert r.status_code == 400 and r.json() == {"error": "Not a font file."}
+    r = font_client.post("/api/fonts", files={"file": ("setup.exe", b"MZ" + b"\0" * 100, "application/octet-stream")})
+    assert r.status_code == 400 and ".ttf" in r.json()["error"]
+    assert font_client.post("/api/fonts", data={"x": "1"}).status_code == 400
+    assert not (fonts.default.custom_dir.exists() and list(fonts.default.custom_dir.iterdir()))
+
+
+def test_font_uploads_are_size_limited_before_parsing(font_client):
+    big = font_client.post("/api/fonts", files={"file": ("big.ttf", b"\0" * (6 * 1024 * 1024), "font/ttf")})
+    assert big.status_code == 413 and big.json() == {"error": "File is over 5 MB."}
+    declared = font_client.post("/api/fonts", content=b"x", headers={"content-type": "multipart/form-data; boundary=b",
+                                                                   "content-length": str(10 * 1024 * 1024)})
+    assert declared.status_code == 413
+
+    def chunks():
+        yield b'--b\r\nContent-Disposition: form-data; name="file"; filename="a.ttf"\r\n\r\nxx\r\n--b--\r\n'
+    unsized = font_client.post("/api/fonts", content=chunks(), headers={"content-type": "multipart/form-data; boundary=b"})
+    assert unsized.status_code == 413
+
+
+@pytest.mark.parametrize("key", ["arial", "dm-sans", "nope", "UPPER", "..%5Cx", "%2E%2E", "a%2Fb", "x" * 61, "arial.ttf", "-lead"])
+def test_only_added_fonts_can_be_removed_and_odd_keys_are_404(font_client, key):
+    r = font_client.delete("/api/fonts/" + key)
+    assert r.status_code == 404
+    assert (fonts.SYSTEM_DIR / "arial.ttf").exists() and (fonts.BUNDLED_DIR / "DMSans-Regular.ttf").exists()
+    assert {f["key"] for f in font_client.get("/api/fonts").json()["fonts"]} == {"arial", "calibri", "dm-sans"}

@@ -53,7 +53,11 @@ def test_slugify():
     (lambda d: d.update(elements="no"), "elements"),
     (lambda d: d["elements"].append({"type": "blob", "x": 0, "y": 0, "w": 1, "h": 1}), "type"),
     (lambda d: d["elements"][0].update(content="{bogus}"), "unknown field"),
-    (lambda d: d["elements"][0].update(font="comic"), "font"),
+    (lambda d: d["elements"][0].update(font="Comic Sans"), "font"),
+    (lambda d: d["elements"][0].update(font="..\\x"), "font"),
+    (lambda d: d["elements"][0].update(font=""), "font"),
+    (lambda d: d["elements"][0].update(font="a" * 61), "font"),
+    (lambda d: d["elements"][0].update(font=7), "font"),
     (lambda d: d["elements"][0].update(size_pt=500), "size_pt"),
     (lambda d: d["elements"][0].update(w=0), "w must"),
     (lambda d: d["elements"].extend([d["elements"][0]] * 45), "Too many"),
@@ -70,6 +74,21 @@ def test_validate_fills_defaults_and_makes_ids_unique():
         {"type": "rect", "x": 0, "y": 0, "w": 5, "h": 1}, {"id": "e1", "type": "text", "x": 1, "y": 1, "w": 5, "h": 2, "size_pt": 6}]})
     assert d["direction"] == 1 and [e["id"] for e in d["elements"]] == ["e1", "e1-2"]
     assert d["elements"][1]["font"] == "arial" and d["elements"][1]["align"] == "left"
+
+
+def test_any_well_formed_font_key_is_valid_even_if_it_is_not_installed():
+    d = copy.deepcopy(design("mf-april"))
+    for key in ("dm-sans", "comic", "not-installed-anywhere", "a" * 60):
+        d["elements"][0]["font"] = key
+        assert validate(d)["elements"][0]["font"] == key
+    assert not hasattr(designs, "FONTS")
+
+
+def test_legacy_font_names_are_upgraded_to_their_family_keys():
+    d = copy.deepcopy(design("mf-april"))
+    for old, new in (("times", "times-new-roman"), ("courier", "courier-new")):
+        d["elements"][0]["font"] = old
+        assert validate(d)["elements"][0]["font"] == new
 
 
 def test_builtin_json_files_round_trip_through_validate():

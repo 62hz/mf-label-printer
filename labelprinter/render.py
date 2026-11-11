@@ -6,7 +6,6 @@ see designs.py for the schema and labelprinter/designs/*.json for the built-in o
 """
 import io
 import math
-import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -15,39 +14,26 @@ from barcode import Code128
 from barcode.errors import BarcodeError
 from PIL import Image, ImageDraw, ImageFont
 
-from . import designs
+from . import designs, fonts
 from .model import Label, price_text
 
 DPM = 8                                  # dots per mm
 PX_PER_PT = DPM * 25.4 / 72              # font size in points -> pixels at 203.2 dpi
 THRESHOLD = 160                          # grey level below which a dot prints
-FONT_DIR = Path(os.environ.get("LABEL_FONT_DIR", "C:/Windows/Fonts"))
 LOGO_FILE = Path(__file__).resolve().parents[1] / "assets" / "mf-logo-main-black-1200px.png"
-FONT_FILES = {  # family -> regular, bold, italic, bold italic
-    "arial": ("arial.ttf", "arialbd.ttf", "ariali.ttf", "arialbi.ttf"),
-    "calibri": ("calibri.ttf", "calibrib.ttf", "calibrii.ttf", "calibriz.ttf"),
-    "times": ("times.ttf", "timesbd.ttf", "timesi.ttf", "timesbi.ttf"),
-    "verdana": ("verdana.ttf", "verdanab.ttf", "verdanai.ttf", "verdanaz.ttf"),
-    "tahoma": ("tahoma.ttf", "tahomabd.ttf", "tahoma.ttf", "tahomabd.ttf"),
-    "courier": ("cour.ttf", "courbd.ttf", "couri.ttf", "courbi.ttf"),
-}
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
 
 
-def available_fonts() -> list[str]:
-    return [fam for fam, files in FONT_FILES.items() if all((FONT_DIR / f).exists() for f in files)]
-
-
-def font_file(family: str, bold: bool, italic: bool) -> str:
-    return FONT_FILES[family][(1 if bold else 0) + (2 if italic else 0)]
-
-
 @lru_cache(maxsize=256)
-def font(name: str, px: float) -> ImageFont.FreeTypeFont:
-    path = FONT_DIR / name
-    if not path.exists():
-        raise FileNotFoundError(f"Font {path} not found. Set LABEL_FONT_DIR to a folder holding {name}.")
-    return ImageFont.truetype(str(path), px)
+def _load(path: str, mtime_ns: int, size: int, px: float) -> ImageFont.FreeTypeFont:
+    return ImageFont.truetype(path, px)
+
+
+def font(path, px: float) -> ImageFont.FreeTypeFont:
+    """The font file at `path` (from fonts.resolve) at `px` pixels, cached. A replaced file is picked up: the file's time and size are part of the key."""
+    path = Path(path)
+    st = path.stat()
+    return _load(str(path), st.st_mtime_ns, st.st_size, px)
 
 
 def dots(mm: float) -> int:
@@ -68,7 +54,7 @@ def expand(content: str, label: Label) -> str:
     return _PLACEHOLDER.sub(lambda m: vals.get(m.group(1), ""), content).strip()
 
 
-def fit(draw, text: str, name: str, max_px: float, avail: int, min_px: float):
+def fit(draw, text: str, path: Path, max_px: float, avail: int, min_px: float):
     """Shrink the font down to min_px, then cut the text and add '...' so it always fits `avail` dots.
 
     Candidate sizes are max_px, max_px - 0.5, ... clamped at min_px. Both searches are binary
@@ -81,10 +67,10 @@ def fit(draw, text: str, name: str, max_px: float, avail: int, min_px: float):
         return max(floor_px, max_px - i * 0.5)
 
     def width(i: int) -> float:
-        return draw.textlength(text, font=font(name, size(i)))
+        return draw.textlength(text, font=font(path, size(i)))
 
     if width(0) <= avail:
-        return text, font(name, size(0))
+        return text, font(path, size(0))
     if width(steps) <= avail:
         lo, hi = 1, steps  # the smallest candidate that fits is in lo..hi, and hi fits
         while lo < hi:
@@ -93,8 +79,8 @@ def fit(draw, text: str, name: str, max_px: float, avail: int, min_px: float):
                 hi = mid
             else:
                 lo = mid + 1
-        return text, font(name, size(hi))
-    f = font(name, size(steps))
+        return text, font(path, size(hi))
+    f = font(path, size(steps))
     lo, hi = 0, len(text)  # the longest prefix whose width plus '...' fits is lo..hi
     while lo < hi:
         mid = (lo + hi + 1) // 2
@@ -126,8 +112,8 @@ def _text(draw, el: dict, label: Label) -> None:
         return
     x0, y0, x1, y1 = _box(el)
     pad = 2 if el["reverse"] else 0
-    name = font_file(el["font"], el["bold"], el["italic"])
-    text, f = fit(draw, text, name, el["size_pt"] * PX_PER_PT, max(1, x1 - x0 - 2 * pad), min(el["min_size_pt"], el["size_pt"]) * PX_PER_PT)
+    path = fonts.resolve(el["font"], el["bold"], el["italic"])
+    text, f = fit(draw, text, path, el["size_pt"] * PX_PER_PT, max(1, x1 - x0 - 2 * pad), min(el["min_size_pt"], el["size_pt"]) * PX_PER_PT)
     if el["reverse"]:
         draw.rectangle((x0, y0, x1 - 1, y1 - 1), fill=0)
     ax = {"left": x0 + pad, "center": (x0 + x1) // 2, "right": x1 - pad}[el["align"]]
@@ -192,9 +178,10 @@ def render(label: Label, design: dict) -> Image.Image:
 
 
 def notes(label: Label, design: dict) -> list[str]:
-    """Plain-language warnings for the designer about barcode scanning."""
+    """Plain-language warnings for the designer: barcode scanning first, then any font that is not exactly what the design asks for."""
     out = []
-    for el in designs.validate(design)["elements"]:
+    elements = designs.validate(design)["elements"]
+    for el in elements:
         if el["type"] != "barcode" or not el["visible"]:
             continue
         data = expand(el["content"], label)
@@ -214,6 +201,11 @@ def notes(label: Label, design: dict) -> list[str]:
             if abs(scale - round(scale)) > 0.01:
                 out.append(f"Stretched barcode: bars vary between {math.floor(scale)} and {math.ceil(scale)} dots. "
                            "Some scanners cannot read this. Use mode 'integer' for a scan-safe barcode.")
+    for el in elements:
+        if el["type"] == "text" and el["visible"]:
+            message = fonts.status(el["font"], el["bold"], el["italic"])
+            if message and message not in out:
+                out.append(message)
     return out
 
 

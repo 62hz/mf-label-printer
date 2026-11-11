@@ -7,7 +7,7 @@ import os
 
 from PIL import Image, ImageDraw
 
-from . import designs
+from . import designs, fonts
 from .model import Label
 from .render import font, render
 
@@ -59,11 +59,11 @@ def orientation_image() -> Image.Image:
     d = ImageDraw.Draw(img)
     d.rectangle((0, 0, TEST_W - 1, TEST_H - 1), outline=0, width=3)
     d.rectangle((0, 0, 30, TEST_H - 1), fill=0)
-    d.text((TEST_W // 2, 40), "TOP", font=font("arialbd.ttf", 36), fill=0, anchor="mm")
+    d.text((TEST_W // 2, 40), "TOP", font=font(fonts.resolve("arial", True), 36), fill=0, anchor="mm")
     d.polygon([(TEST_W // 2, 8), (TEST_W // 2 - 14, 22), (TEST_W // 2 + 14, 22)], fill=0)
-    d.text((TEST_W // 2, 120), "XP-TT426B TEST", font=font("arialbd.ttf", 26), fill=0, anchor="mm")
-    d.text((TEST_W // 2, 160), "50 x 30 mm  bar = LEFT edge", font=font("arial.ttf", 20), fill=0, anchor="mm")
-    d.text((TEST_W // 2, 200), "edges must show, nothing cut", font=font("arial.ttf", 20), fill=0, anchor="mm")
+    d.text((TEST_W // 2, 120), "XP-TT426B TEST", font=font(fonts.resolve("arial", True), 26), fill=0, anchor="mm")
+    d.text((TEST_W // 2, 160), "50 x 30 mm  bar = LEFT edge", font=font(fonts.resolve("arial"), 20), fill=0, anchor="mm")
+    d.text((TEST_W // 2, 200), "edges must show, nothing cut", font=font(fonts.resolve("arial"), 20), fill=0, anchor="mm")
     return img.point(lambda v: 255 if v >= 160 else 0).convert("1")
 
 

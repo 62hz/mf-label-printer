@@ -8,10 +8,11 @@ import os
 import re
 from pathlib import Path
 
+from . import fonts
+
 DEFAULT_SLUG = os.environ.get("LABELPRINTER_DEFAULT_DESIGN", "mf-april")  # the design the page opens with
 BUILTIN_DIR = Path(__file__).resolve().parent / "designs"
 FIELDS = {"sku", "artist", "title", "format", "year", "genre", "price", "copies"}
-FONTS = ("arial", "calibri", "times", "verdana", "tahoma", "courier")
 TYPES = ("text", "barcode", "rect", "image")
 MAX_ELEMENTS = 40
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
@@ -33,6 +34,15 @@ def _choice(d: dict, key: str, options, default, where: str):
     if v not in options:
         raise ValueError(f"{where}: {key} must be one of {', '.join(map(str, options))}")
     return v
+
+
+def _font_key(d: dict, where: str) -> str:
+    """A font family key (see fonts.py), with legacy names upgraded. Whether that font is installed is not checked here:
+    a design naming a missing font still loads and renders, with a note."""
+    key = fonts.canonical_key(d.get("font", "arial"))
+    if not fonts.valid_key(key):
+        raise ValueError(f"{where}: font must be a font key made of lowercase letters, digits and dashes, like arial or dm-sans")
+    return key
 
 
 def _check_placeholders(text: str, where: str) -> str:
@@ -82,7 +92,7 @@ def validate(design: dict) -> dict:
         if etype == "text":
             clean.update(
                 content=_check_placeholders(str(el.get("content", "")), where),
-                font=_choice(el, "font", FONTS, "arial", where),
+                font=_font_key(el, where),
                 size_pt=_num(el, "size_pt", 3, 60, where),
                 min_size_pt=_num({"min_size_pt": el.get("min_size_pt", 4)}, "min_size_pt", 2, 60, where),
                 bold=bool(el.get("bold", False)), italic=bool(el.get("italic", False)), reverse=bool(el.get("reverse", False)),

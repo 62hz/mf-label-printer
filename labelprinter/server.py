@@ -20,11 +20,11 @@ from starlette.responses import FileResponse, JSONResponse, RedirectResponse, Re
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from . import auth, outputs, tspl
+from . import auth, fonts, outputs, tspl
 from .catalog import Catalog, read_only_client
 from .designs import DEFAULT_SLUG, DesignStore
 from .model import Label
-from .render import available_fonts, notes, png_bytes
+from .render import notes, png_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = Path(__file__).resolve().parent / "static"
@@ -42,6 +42,12 @@ XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 class BadRequest(Exception):
     pass
+
+
+def header_safe(text: str) -> str:
+    """Text for a response header: no control characters and plain ASCII (anything else becomes '?'), so Starlette's Latin-1
+    encoding cannot fail and every client reads the same text."""
+    return "".join(ch if ch.isprintable() else " " for ch in text).encode("ascii", "replace").decode("ascii")
 
 
 async def json_body(request: Request) -> dict:
@@ -108,7 +114,7 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
                 if request.url.path.startswith("/api/"):
                     return JSONResponse({"error": "Not signed in."}, status_code=401)
                 return RedirectResponse("/login", status_code=303)
-            if request.url.path == "/api/sheet":  # refuse a big or unsized upload before the form is parsed
+            if request.method == "POST" and request.url.path in ("/api/sheet", "/api/fonts"):  # refuse a big or unsized upload before the form is parsed
                 length = request.headers.get("content-length", "")
                 if not length.isdigit() or int(length) > MAX_UPLOAD + 65536:
                     return JSONResponse({"error": "File is over 5 MB."}, status_code=413)
@@ -212,7 +218,7 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
         label, design = Label.from_dict(raw), design_from(payload)
         png = await run_in_threadpool(png_bytes, label, design)
         warnings = await run_in_threadpool(notes, label, design)
-        return Response(png, media_type="image/png", headers={"X-Label-Notes": " | ".join(warnings)})
+        return Response(png, media_type="image/png", headers={"X-Label-Notes": header_safe(" | ".join(warnings))})
 
     @guarded
     async def labels_pdf(request: Request):
@@ -246,7 +252,31 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
 
     @guarded
     async def designs_list(request: Request):
-        return JSONResponse({"designs": store.list(), "default": DEFAULT_SLUG, "fonts": available_fonts()})
+        return JSONResponse({"designs": store.list(), "default": DEFAULT_SLUG})
+
+    @guarded
+    async def fonts_list(request: Request):
+        return JSONResponse({"fonts": await run_in_threadpool(fonts.default.families)})
+
+    @guarded
+    async def font_add(request: Request):
+        form = await request.form()
+        upload = form.get("file")
+        if upload is None or not hasattr(upload, "read"):
+            raise BadRequest("No file uploaded.")
+        data = await upload.read()
+        if len(data) > MAX_UPLOAD:
+            raise BadRequest("File is over 5 MB.")
+        registry = fonts.default
+        key = await run_in_threadpool(registry.add_custom, upload.filename or "", data)   # ValueError: a 400 with the reason
+        return JSONResponse({"key": key, "fonts": await run_in_threadpool(registry.families)})
+
+    @guarded
+    async def font_remove(request: Request):
+        key = request.path_params["key"]
+        registry = fonts.default
+        await run_in_threadpool(registry.remove_custom, key)   # KeyError: not an added font, a 404
+        return JSONResponse({"deleted": key, "fonts": await run_in_threadpool(registry.families)})
 
     @guarded
     async def design_one(request: Request):
@@ -283,6 +313,9 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
         Route("/api/designs", designs_list),
         Route("/api/designs", design_save, methods=["POST"]),
         Route("/api/designs/{slug}", design_one, methods=["GET", "DELETE"]),
+        Route("/api/fonts", fonts_list),
+        Route("/api/fonts", font_add, methods=["POST"]),
+        Route("/api/fonts/{key}", font_remove, methods=["DELETE"]),
         Mount("/static", StaticFiles(directory=STATIC), name="static"),
     ]
     return Starlette(routes=routes)

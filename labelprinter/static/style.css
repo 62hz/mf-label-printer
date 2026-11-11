@@ -65,5 +65,12 @@ body.login input { margin-bottom: 12px; }
 .prop input[type="checkbox"] { width: 24px; height: 24px; }
 .prop select { width: 100%; min-height: 40px; border: 1px solid var(--line); border-radius: 8px; padding: 6px; background: var(--paper); font: inherit; }
 @media (max-width: 900px) { .dgrid { grid-template-columns: 1fr; } }
+.prop:has(.fontpick) { grid-column: span 2; }
+.fontpick { display: grid; gap: 6px; }
+.fontpick input[type="search"] { width: 100%; min-height: 40px; box-sizing: border-box; }
+.fontrow { display: flex; gap: 6px; align-items: center; }
+.fontrow select { flex: 1; min-width: 0; }
+.fontrow button[hidden] { display: none; }
+.fontpick > button { justify-self: start; min-height: 40px; }
 input[type="checkbox"] { width: 22px; height: 22px; padding: 0; flex: none; }
 .ellist .elname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

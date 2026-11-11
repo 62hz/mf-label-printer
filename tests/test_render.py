@@ -68,6 +68,50 @@ def test_changing_a_design_changes_the_output():
     assert render(AMERICAN, tweak("mf-april", "artist", content="{title}")).tobytes() != base
 
 
+def test_a_design_can_use_the_bundled_dm_sans():
+    base = render(AMERICAN, design("mf-april")).tobytes()
+    dm = render(AMERICAN, tweak("mf-april", "artist", font="dm-sans")).tobytes()
+    assert dm != base and render(AMERICAN, tweak("mf-april", "artist", font="dm-sans")).tobytes() == dm   # and it is deterministic
+    assert render(AMERICAN, tweak("mf-april", "artist", font="dm-sans")).size == (400, 240)
+
+
+def test_dm_sans_bold_uses_the_bold_file():
+    regular = render(AMERICAN, tweak("mf-april", "artist", font="dm-sans", bold=False)).tobytes()
+    bold = render(AMERICAN, tweak("mf-april", "artist", font="dm-sans", bold=True)).tobytes()
+    assert regular != bold
+
+
+def test_a_font_that_is_not_installed_still_renders_with_arial_and_says_so():
+    ghost = tweak("mf-april", "year", font="no-such-font")
+    assert render(AMERICAN, ghost).tobytes() == render(AMERICAN, tweak("mf-april", "year", font="arial")).tobytes()
+    assert "Font 'no-such-font' is not installed here, using Arial." in notes(AMERICAN, ghost)
+
+
+def test_notes_name_each_font_problem_once_and_after_the_barcode_notes():
+    d = copy.deepcopy(design("mf-april"))
+    for el in d["elements"]:
+        if el["type"] == "text":
+            el["font"] = "no-such-font"
+    out = notes(AMERICAN, d)
+    assert "1 dot" in out[0] and out.count("Font 'no-such-font' is not installed here, using Arial.") == 1
+    assert len(out) == len(set(out))
+
+
+def test_a_missing_style_is_reported_in_plain_words():
+    italic = tweak("mf-april", "title", font="dm-sans", italic=True)                  # DM Sans is bundled as regular and bold only
+    assert "DM Sans has no italic, showing regular." in notes(AMERICAN, italic)
+
+
+def test_hidden_text_elements_add_no_font_notes():
+    hidden = tweak("mf-april", "year", font="no-such-font", visible=False)
+    assert not any("no-such-font" in n for n in notes(AMERICAN, hidden))
+
+
+def test_built_in_designs_have_exact_fonts():
+    for slug in SLUGS:
+        assert not any("font" in n.lower() or "has no" in n for n in notes(AMERICAN, design(slug)))
+
+
 def test_label_size_follows_the_design():
     d = copy.deepcopy(design("mf-april"))
     d.update(width_mm=40, height_mm=25)
