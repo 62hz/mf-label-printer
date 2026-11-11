@@ -91,7 +91,7 @@ def test_long_artist_and_title_wrap_instead_of_being_cut(monkeypatch):
     monkeypatch.setattr(render.ImageDraw.ImageDraw, "text", lambda self, xy, text, *a, **kw: (drawn.append(text), real(self, xy, text, *a, **kw))[1])
     render.render(Label("GODSPEED01", "Godspeed You! Black Emperor", "Lift Your Skinny Fists",
                         "VINYL", "2000", "Post-Rock", 785000), load("mf-concept-price-card"))
-    assert "Godspeed You! Black" in drawn and "Emperor" in drawn                  # the artist wraps
+    assert " ".join(drawn[:2]) == "Godspeed You! Black Emperor"                   # the artist wraps onto two whole lines
     drawn.clear()
     render.render(Label("VARIOUS0042", "Various Artists", "Kampung Gaul: Indonesian Disco, Funk & Boogie 1976-1989",
                         "VINYL", "2023", "Funk / Soul, Disco", 520000), load("mf-concept-price-card"))
@@ -126,23 +126,34 @@ def test_lines_accepts_1_to_3(value, ok):
             designs.validate(d)
 
 
-def _symbol_printed(label):
+def _corner_ink(label):
     img = render.render(label, load("mf-concept-price-card")).convert("L")
-    corner = img.crop((20, 192, 64, 220))          # the foot of the barcode column, where the symbol sits
+    corner = img.crop((344, 25, 374, 58))          # the header's top-right corner, where the symbol sits
     return sum(1 for v in corner.getdata() if v == 0)
 
 
-def test_the_symbol_shows_under_a_short_barcode_and_gives_way_to_a_long_one():
-    short = Label("NOUPASC001", "Nourished By Time", "The Passionate Ones", "CD", "2024", "Soul", 330000)
-    long_ = Label("ABCDEFGHIJKLM", "Miles Davis", "Kind Of Blue", "VINYL", "1959", "Jazz", 345000)
-    assert _symbol_printed(short) > 100
-    # the long SKU's bars reach into the corner; what is there must be bars only (rows of full-width black), no symbol shape
-    img = render.render(long_, load("mf-concept-price-card")).convert("L")
-    d = {"name": "t", "width_mm": 50, "height_mm": 30, "gap_mm": 2,
-         "elements": [dict(el) for el in load("mf-concept-price-card")["elements"] if el["id"] == "barcode"]}
-    bars_only = render.render(long_, d).convert("L")
-    box = (20, 192, 64, 220)
-    assert img.crop(box).tobytes() == bars_only.crop(box).tobytes()
+@pytest.mark.parametrize("label", [
+    Label("NOUPASC001", "Nourished By Time", "The Passionate Ones", "CD", "2024", "Soul", 330000),
+    Label("ABCDEFGHIJKLM", "Miles Davis", "Kind Of Blue", "VINYL", "1959", "Jazz", 345000),
+    Label("ORCHMANOEUV7", "Orchestral Manoeuvres In The Dark", "Architecture & Morality", "CASSETTE", "1981", "Synth-pop", 450000),
+], ids=lambda label: label.sku)
+def test_the_symbol_is_in_the_header_corner_on_every_label(label):
+    assert _corner_ink(label) > 80
+
+
+def test_a_logo_that_gives_way_follows_a_barcode_or_is_left_out():
+    """Renderer feature (not used by the Price card any more): a giving-way logo sits under a barcode or drops out."""
+    def design(sku_len_box):
+        return {"name": "t", "width_mm": 50, "height_mm": 30, "gap_mm": 2, "elements": [
+            {"type": "barcode", "content": "{sku}", "x": 2.5, "y": 2.5, "w": 5.5, "h": 25, "mode": "integer", "rotate": 90},
+            {"type": "image", "src": "symbol", "x": 3.5, "y": 2.5, "w": 3.15, "h": sku_len_box, "gives_way": True}]}
+    short = render.render(Label("AB12"), design(25)).convert("L")
+    long_ = render.render(Label("ABCDEFGHIJKLMNO"), design(25)).convert("L")
+    below_short = short.crop((20, 120, 64, 220))
+    assert sum(1 for v in below_short.getdata() if v == 0) > 50                # the symbol sits under the short code
+    bars_only = render.render(Label("ABCDEFGHIJKLMNO"), {"name": "t", "width_mm": 50, "height_mm": 30, "gap_mm": 2,
+                              "elements": [design(25)["elements"][0]]}).convert("L")
+    assert long_.tobytes() == bars_only.tobytes()                              # no room under the long code: left out
 
 
 def test_gives_way_defaults_off():

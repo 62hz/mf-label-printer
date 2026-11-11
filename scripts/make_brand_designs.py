@@ -24,7 +24,7 @@ L, R, T, B = 2.5, 47.5, 2.5, 27.5     # live area
 W = R - L
 SEMI, MED, REG, LIGHT = "dm-sans-semibold", "dm-sans-medium", "dm-sans", "dm-sans-light"
 SYMBOL_W, SYMBOL_H = 6.0, 6.66        # the symbol at its 6 mm minimum, in its own proportions
-MINI_W, MINI_H = 3.15, 3.5            # the small symbol in the Price card barcode column (Django's call, below the guide's 6 mm)
+MINI_W, MINI_H = 3.15, 3.5            # the small symbol in the Price card header corner (Django's call, below the guide's 6 mm)
 CAP = 0.7                             # DM Sans cap height in em
 
 
@@ -182,11 +182,12 @@ def price_card():
         return text(eid, content, MED, pt, x + inset, x_end - x - 2 * inset, base, **kw)
 
     return design("MF Price card", [
-        # barcode column: bars centred in the column above the symbol; a long code takes the whole column and the symbol steps aside
+        # barcode column: the bars centred in the column (whole dots per bar, so their length follows the SKU)
         {"id": "barcode", "type": "barcode", "content": "{sku}", "x": L, "y": T, "w": 5.5, "h": B - T, "mode": "integer",
-         "rotate": 90, "center": True, "reserve": MINI_H + 1.0},
-        {"id": "symbol", "type": "image", "src": "symbol", "x": L + (5.5 - MINI_W) / 2, "y": B - MINI_H, "w": MINI_W, "h": MINI_H,
-         "gives_way": True},
+         "rotate": 90, "center": True},
+        # the symbol in the header's top-right corner, on the artist's cap height: the same place on every label
+        {"id": "symbol", "type": "image", "src": "symbol", "x": round(x1 - inset - MINI_W, 2), "y": round(T + frame + 0.6, 2),
+         "w": MINI_W, "h": MINI_H},
         # the frame (2 dots) and the inner rules (1 dot)
         line("frame-left", col, T, frame, B - T), line("frame-top", col, T, R - col, frame),
         line("frame-bottom", col, B - frame, R - col, frame), line("frame-right", R - frame, T, frame, B - T),
@@ -194,7 +195,7 @@ def price_card():
         line("div-format", f_end, head, hair, cells - head), line("div-year", y_end, head, hair, cells - head),
         line("div-price", y_end, cells, hair, B - frame - cells),
         # header: artist, then the title right under its last line
-        flow("artist", "{artist}", SEMI, 9, xi, wi, T + frame + 0.6 + cap_mm(9), 9.5, min_pt=7),
+        flow("artist", "{artist}", SEMI, 9, xi, round(wi - MINI_W - 1.0, 2), T + frame + 0.6 + cap_mm(9), 9.5, min_pt=7),
         flow("title", "{title}", MED, 7, xi, wi, 9.0, head - 0.8, min_pt=6, after="artist", gap=3.2),
         # cells
         label_("l-format", "Format", x0, label_base(head)), value("format", "{format}", x0, f_end, cells - 0.8, min_pt=5, upper=True, blank="–"),

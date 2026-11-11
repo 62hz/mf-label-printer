@@ -16,18 +16,16 @@
       "h": 25.0,
       "mode": "integer",
       "rotate": 90,
-      "center": true,
-      "reserve": 4.5
+      "center": true
     },
     {
       "id": "symbol",
       "type": "image",
       "src": "symbol",
-      "x": 3.675,
-      "y": 24.0,
+      "x": 43.3,
+      "y": 3.35,
       "w": 3.15,
-      "h": 3.5,
-      "gives_way": true
+      "h": 3.5
     },
     {
       "id": "frame-left",
@@ -107,7 +105,7 @@
       "content": "{artist}",
       "x": 10.05,
       "y": 5.5725,
-      "w": 36.4,
+      "w": 32.25,
       "h": 3.928,
       "font": "dm-sans-semibold",
       "size_pt": 9,
