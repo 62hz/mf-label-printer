@@ -186,8 +186,18 @@ def render(label: Label, design: dict) -> Image.Image:
                 _text(big_draw, el, label, SMOOTH)
             else:
                 _text(draw, el, label)
+        elif el["type"] == "barcode" and el["rotate"] == 90:
+            # bars lying down along the box height: draw upright on a turned box, then turn it a quarter clockwise
+            x0, y0, x1, y1 = _box(el)
+            upright = Image.new("L", (y1 - y0, x1 - x0), 255)
+            _barcode(ImageDraw.Draw(upright), dict(el, x=0, y=0, w=el["h"], h=el["w"]), label)
+            img.paste(upright.rotate(-90, expand=True), (x0, y0))
         elif el["type"] == "barcode":
             _barcode(draw, el, label)
+        elif el["type"] == "rect" and smooth:
+            # on the text copy, so white text placed on a black box stays white (edges stay on whole dots: k-times coordinates)
+            x0, y0, x1, y1 = (v * SMOOTH for v in _box(el))
+            big_draw.rectangle((x0, y0, x1 - 1, y1 - 1), fill=0)
         elif el["type"] == "rect":
             x0, y0, x1, y1 = _box(el)
             draw.rectangle((x0, y0, x1 - 1, y1 - 1), fill=0)
@@ -211,7 +221,8 @@ def notes(label: Label, design: dict) -> list[str]:
         if not data:
             continue
         n = len(bars(data))
-        width = _box(el)[2] - _box(el)[0]
+        x0, y0, x1, y1 = _box(el)
+        width = (y1 - y0) if el["rotate"] == 90 else (x1 - x0)  # the length the bars are spread along
         if width < n:
             continue  # render() reports this one as an error
         if el["mode"] == "integer":

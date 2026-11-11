@@ -114,7 +114,83 @@ def symbol_column():
     ])
 
 
-FILES = {"mf-brand-ledger": ledger, "mf-brand-barcode-foot": barcode_foot, "mf-brand-symbol-column": symbol_column}
+def chip(eid, content, font, pt, x, y, w, h, *, min_pt=None, upper=False, align="center"):
+    """White text on a black box (the box is the element)."""
+    return {"id": eid, "type": "text", "content": content, "x": x, "y": y, "w": w, "h": h, "font": font, "size_pt": pt,
+            "min_size_pt": min_pt or pt, "bold": False, "italic": False, "reverse": True, "upper": upper,
+            "align": align, "valign": "middle"}
+
+
+def line(eid, x, y, w, h):
+    return {"id": eid, "type": "rect", "x": x, "y": y, "w": w, "h": h}
+
+
+def catalogue_line():
+    """After Hard Wax, Yoyaku and Honest Jon's: the catalogue line on top, artist and title as the headline,
+    and format and price fused into one ticket, the single black element."""
+    tx, tw = 28.5, R - 28.5
+    return design("MF Concept · Catalogue line", [
+        text("sku", "{sku}", MED, 6, L, 20, 4.5),
+        text("meta", "{year}  {genre}", MED, 6, 22.5, R - 22.5, 4.5, align="right", min_pt=5, upper=True),
+        rule(5.5),
+        artist_at(10.0),
+        text("title", "{title}", REG, 8, L, W, 13.5, min_pt=5),
+        barcode(L, 18.5, 24, 9.0),
+        line("ticket", tx, 16.5, tw, 11.0),
+        chip("format", "{format}", MED, 6, tx + 1.0, 17.5, tw - 2.0, 3.0, min_pt=5, upper=True, align="left"),
+        chip("price", "{price}", MED, 10, tx + 1.0, 22.0, tw - 2.0, 4.5, min_pt=7, align="left"),
+    ])
+
+
+def artist_at(baseline, x=L, w=W, pt=12):
+    return text("artist", "{artist}", SEMI, pt, x, w, baseline, min_pt=6.5)
+
+
+def price_card():
+    """After Disk Union's used-record price card: a ruled form with named cells, the barcode standing up the left edge."""
+    col = L + 6.5                      # right edge of the barcode column
+    c = col + 0.5                      # left edge of the cells
+    pad = 0.8
+    r1, r2, r3 = 9.0, 15.0, 21.0       # row lines
+    f_end, y_end = 23.0, 32.0          # cell lines in the format row
+    p_start = 30.0                     # cell line in the last row
+
+    def label_(eid, words, x, base):
+        return text(eid, words, MED, 5, x + pad, 12, base, upper=True)
+
+    return design("MF Concept · Price card", [
+        {"id": "barcode", "type": "barcode", "content": "{sku}", "x": L, "y": T, "w": 5.5, "h": B - T, "mode": "integer", "rotate": 90},
+        line("col", col, T, 0.25, B - T),
+        line("r1", c, r1, R - c, 0.25), line("r2", c, r2, R - c, 0.25), line("r3", c, r3, R - c, 0.25),
+        line("v-format", f_end, r2, 0.25, r3 - r2), line("v-year", y_end, r2, 0.25, r3 - r2), line("v-price", p_start, r3, 0.25, B - r3),
+        label_("l-artist", "Artist", c, T + 2.0), artist_at(r1 - 1.0, c + pad, R - c - 2 * pad, pt=10),
+        label_("l-title", "Title", c, r1 + 2.0), text("title", "{title}", REG, 8, c + pad, R - c - 2 * pad, r2 - 1.0, min_pt=5),
+        label_("l-format", "Format", c, r2 + 2.0), text("format", "{format}", MED, 8, c + pad, f_end - c - 2 * pad, r3 - 1.0, min_pt=5, upper=True),
+        label_("l-year", "Year", f_end, r2 + 2.0), text("year", "{year}", MED, 8, f_end + pad, y_end - f_end - 2 * pad, r3 - 1.0, min_pt=5),
+        label_("l-genre", "Genre", y_end, r2 + 2.0), text("genre", "{genre}", REG, 8, y_end + pad, R - y_end - 2 * pad, r3 - 1.0, min_pt=5),
+        label_("l-sku", "SKU", c, r3 + 2.0), text("sku", "{sku}", REG, 6, c + pad, p_start - c - 2 * pad, B - 1.0, min_pt=5),
+        label_("l-price", "Price", p_start, r3 + 2.0), text("price", "{price}", MED, 10, p_start + pad, R - p_start - pad, B - 1.0, align="right", min_pt=7),
+    ])
+
+
+def format_tile():
+    """Medium Format's own idea: the format is the hero mark, a black tile like an element in a periodic table."""
+    x = L + 11.0 + 2.0
+    return design("MF Concept · Format tile", [
+        line("tile", L, T, 11.0, 11.0),                # the tile stays whole when the year is empty
+        chip("format", "{format}", SEMI, 12, L, T, 11.0, 8.0, min_pt=5, upper=True),
+        chip("year", "{year}", MED, 6, L, T + 8.0, 11.0, 3.0, min_pt=5),
+        artist_at(5.5, x, R - x),
+        text("title", "{title}", REG, 8, x, R - x, 9.0, min_pt=5),
+        text("genre", "{genre}", MED, 6, x, R - x, T + 11.0, min_pt=5, upper=True),
+        barcode(L, 16.5, W, 6.5),
+        text("sku", "{sku}", REG, 6, L, 22, PRICE_FOOT),
+        text("price", "{price}", MED, 10, 24, R - 24, PRICE_FOOT, align="right", min_pt=7),
+    ])
+
+
+FILES = {"mf-brand-ledger": ledger, "mf-brand-barcode-foot": barcode_foot, "mf-brand-symbol-column": symbol_column,
+         "mf-concept-catalogue-line": catalogue_line, "mf-concept-price-card": price_card, "mf-concept-format-tile": format_tile}
 
 
 def main() -> int:

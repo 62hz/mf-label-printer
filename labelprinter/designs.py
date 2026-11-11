@@ -36,6 +36,17 @@ def _choice(d: dict, key: str, options, default, where: str):
     return v
 
 
+def _rotate(d: dict, where: str) -> int:
+    """0 (bars upright, read left to right) or 90 (bars lying down, read top to bottom). The page sends it as text."""
+    try:
+        r = int(d.get("rotate", 0))
+    except (TypeError, ValueError):
+        r = -1
+    if r not in (0, 90):
+        raise ValueError(f"{where}: rotate must be 0 or 90")
+    return r
+
+
 def _font_key(d: dict, where: str) -> str:
     """A font family key (see fonts.py), with legacy names upgraded. Whether that font is installed is not checked here:
     a design naming a missing font still loads and renders, with a note."""
@@ -102,7 +113,7 @@ def validate(design: dict) -> dict:
                 upper=bool(el.get("upper", False)))
         elif etype == "barcode":
             clean.update(content=_check_placeholders(str(el.get("content", "{sku}")), where),
-                         mode=_choice(el, "mode", ("fit", "integer"), "fit", where))
+                         mode=_choice(el, "mode", ("fit", "integer"), "fit", where), rotate=_rotate(el, where))
         elif etype == "image":
             clean.update(src=_choice(el, "src", ("logo", "symbol", "screen-logo"), "logo", where))
         out["elements"].append(clean)
