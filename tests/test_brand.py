@@ -8,7 +8,7 @@ from PIL import Image
 from labelprinter import designs, fonts, render
 from labelprinter.model import Label
 
-BRAND = ["mf-brand-symbol", "mf-brand-screen-logo"]
+BRAND = ["mf-brand-screen-logo", "mf-brand-info-footer-logo", "mf-brand-info-price-block"]
 SAMPLES = [
     Label("AMEAMET158", "American Football", "American Football (Deluxe Edition)", "CASSETTE", "1999", "Rock", 305000),
     Label("191404155127", "Charli XCX", "Brat", "VINYL", "2024", "Pop", 345000),

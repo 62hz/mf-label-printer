@@ -1,4 +1,4 @@
-"""Render sample labels in the current April design and the two brand designs, side by side.
+"""Render sample labels in the MF Brand designs side by side (see COLUMNS).
 
   uv run python scripts/brand_preview.py [out_dir]
 
@@ -26,7 +26,8 @@ SAMPLES = [
     Label("SAKVRIO002", "Ryuichi Sakamoto & Alva Noto", "Vrioon (Remastered 25th Anniversary Edition)", "VINYL", "2002", "Electronic", 1250000),
     Label("ALEHEAC557", "Various Artists", "Cafe de Flore", "CD", "", "", 95000),
 ]
-COLUMNS = [("mf-april", "Today: MF April"), ("mf-brand-symbol", "Brand: symbol"), ("mf-brand-screen-logo", "Brand: screen logo")]
+COLUMNS = [("mf-brand-screen-logo", "Kept: logo on top"), ("mf-brand-info-footer-logo", "A: info first, logo footer"),
+           ("mf-brand-info-price-block", "B: info first, price block")]
 SCALE, PAD, CAPTION = 2, 28, 44
 PLATE, INK, MUTED = (226, 226, 224), (25, 25, 25), (110, 110, 108)
 
