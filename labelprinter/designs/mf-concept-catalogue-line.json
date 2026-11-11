@@ -21,6 +21,7 @@
       "italic": false,
       "reverse": false,
       "upper": false,
+      "lines": 1,
       "align": "left",
       "valign": "baseline"
     },
@@ -39,6 +40,7 @@
       "italic": false,
       "reverse": false,
       "upper": true,
+      "lines": 1,
       "align": "right",
       "valign": "baseline"
     },
@@ -65,6 +67,7 @@
       "italic": false,
       "reverse": false,
       "upper": false,
+      "lines": 1,
       "align": "left",
       "valign": "baseline"
     },
@@ -83,6 +86,7 @@
       "italic": false,
       "reverse": false,
       "upper": false,
+      "lines": 1,
       "align": "left",
       "valign": "baseline"
     },

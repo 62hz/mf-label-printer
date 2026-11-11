@@ -20,6 +20,7 @@ from .model import Label, price_text
 DPM = 8                                  # dots per mm
 PX_PER_PT = DPM * 25.4 / 72              # font size in points -> pixels at 203.2 dpi
 THRESHOLD = 160                          # grey level below which a dot prints
+GIVE_WAY = 4                             # dots of clear space a giving-way logo keeps from a barcode
 SMOOTH = 4                               # scale of the copy that "smooth text" designs draw their text on
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
 # Image elements pick one of the brand's logo files (Sara's artwork, used as supplied, never redrawn):
@@ -98,6 +99,71 @@ def fit(draw, text: str, path: Path, max_px: float, avail: int, min_px: float):
     return text[:lo].rstrip() + "...", f
 
 
+LEADING = 1.15   # line spacing of wrapped text, in em
+
+
+def _split(draw, words: list[str], f, avail: int) -> int:
+    """How many leading words fit on one line (at least 1)."""
+    n = 1
+    while n < len(words) and draw.textlength(" ".join(words[:n + 1]), font=f) <= avail:
+        n += 1
+    return n
+
+
+WRAP_AT = 0.8   # a line may shrink to 80 % of its size before it is allowed to wrap
+
+
+def _wrap(draw, words: list[str], f, avail: int, lines: int):
+    rows, rest = [], words
+    while rest and len(rows) < lines - 1:
+        n = _split(draw, rest, f, avail)
+        rows.append(" ".join(rest[:n]))
+        rest = rest[n:]
+    return rows, rest
+
+
+def fit_lines(draw, text: str, path: Path, max_px: float, avail: int, min_px: float, lines: int, max_h: int):
+    """Like fit(), but a long text may break onto up to `lines` lines at word boundaries.
+
+    One line is kept while it fits at WRAP_AT of the size or more. Then, from the full size down in 0.5 px steps,
+    a size wins when the text fits on one line, or when it breaks onto up to `lines` lines that are each
+    narrower than `avail` and together no taller than `max_h` (dots). At the smallest size the text is cut
+    with '...'. Returns (rows, font)."""
+    words = text.split()
+    floor_px = min(min_px, max_px)
+    sizes, px = [], max_px
+    while True:
+        sizes.append(px)
+        if px <= floor_px:
+            break
+        px = max(floor_px, px - 0.5)
+
+    def one(px):
+        return draw.textlength(text, font=font(path, px)) <= avail
+
+    for px in sizes:
+        if px >= max_px * WRAP_AT and one(px):
+            return [text], font(path, px)
+    for px in sizes:
+        if one(px):
+            return [text], font(path, px)
+        f = font(path, px)
+        rows, rest = _wrap(draw, words, f, avail, lines)
+        block = f.getmetrics()[0] + (len(rows) + (1 if rest else 0) - 1) * round(f.size * LEADING)
+        if block > max_h:
+            continue
+        last = " ".join(rest)
+        if all(draw.textlength(r, font=f) <= avail for r in rows) and (not rest or draw.textlength(last, font=f) <= avail):
+            return rows + ([last] if rest else []), f
+    f = font(path, floor_px)                     # nothing fits: smallest size, cut the end
+    rows, rest = _wrap(draw, words, f, avail, lines)
+    block = f.getmetrics()[0] + len(rows) * round(f.size * LEADING)
+    if rest and block <= max_h:
+        rows = [r if draw.textlength(r, font=f) <= avail else fit(draw, r, path, floor_px, avail, floor_px)[0] for r in rows]
+        return rows + [fit(draw, " ".join(rest), path, floor_px, avail, floor_px)[0]], f
+    return [fit(draw, text, path, floor_px, avail, floor_px)[0]], f
+
+
 def bars(data: str) -> str:
     """Code128 modules as a '1'/'0' string."""
     if not data:
@@ -123,11 +189,27 @@ def _text(draw, el: dict, label: Label, k: int = 1) -> None:
     x0, y0, x1, y1 = (v * k for v in _box(el))
     pad = 2 * k if el["reverse"] else 0
     path = fonts.resolve(el["font"], el["bold"], el["italic"])
-    text, f = fit(draw, text, path, el["size_pt"] * PX_PER_PT * k, max(1, x1 - x0 - 2 * pad), min(el["min_size_pt"], el["size_pt"]) * PX_PER_PT * k)
+    avail = max(1, x1 - x0 - 2 * pad)
+    max_px, min_px = el["size_pt"] * PX_PER_PT * k, min(el["min_size_pt"], el["size_pt"]) * PX_PER_PT * k
+    if el["lines"] > 1 and el["valign"] != "middle":
+        rows, f = fit_lines(draw, text, path, max_px, avail, min_px, el["lines"], y1 - y0)
+    else:
+        rows, f = None, None
+    if rows is None or len(rows) == 1:
+        text, f = fit(draw, text, path, max_px, avail, min_px) if rows is None else (rows[0], f)
     if el["reverse"]:
         draw.rectangle((x0, y0, x1 - 1, y1 - 1), fill=0)
     ax = {"left": x0 + pad, "center": (x0 + x1) // 2, "right": x1 - pad}[el["align"]]
     h = {"left": "l", "center": "m", "right": "r"}[el["align"]]
+    if rows is not None and len(rows) > 1:
+        lead = round(f.size * LEADING)
+        fill = 255 if el["reverse"] else 0
+        for i, row in enumerate(rows):
+            if el["valign"] == "baseline":   # the last line sits on the baseline, earlier lines above it
+                draw.text((ax, y1 - (len(rows) - 1 - i) * lead), row, font=f, fill=fill, anchor=h + "s")
+            else:
+                draw.text((ax, y0 + i * lead), row, font=f, fill=fill, anchor=h + "a")
+        return
     if el["valign"] == "middle":
         draw.text((ax, (y0 + y1) // 2), text, font=f, fill=255 if el["reverse"] else 0, anchor=h + "m")
     elif el["valign"] == "baseline":  # the bottom edge of the box is the baseline, so a text that shrinks to fit stays on its line
@@ -136,7 +218,8 @@ def _text(draw, el: dict, label: Label, k: int = 1) -> None:
         draw.text((ax, y0), text, font=f, fill=255 if el["reverse"] else 0, anchor=h + "a")
 
 
-def _barcode(draw, el: dict, label: Label) -> None:
+def _barcode(draw, el: dict, label: Label) -> int:
+    """Draw the bars from the left of the box; return how many dots long the drawn barcode is."""
     data = expand(el["content"], label)
     bits = bars(data)
     x0, y0, x1, y1 = _box(el)
@@ -155,6 +238,7 @@ def _barcode(draw, el: dict, label: Label) -> None:
             i = j
         else:
             i += 1
+    return math.floor(n * scale + 0.5)
 
 
 @lru_cache(maxsize=16)
@@ -178,6 +262,7 @@ def render(label: Label, design: dict) -> Image.Image:
     if smooth:  # text drawn on a SMOOTH-times copy and shrunk keeps even letter spacing at small sizes; the barcode and boxes stay on whole dots
         big = Image.new("L", (width * SMOOTH, height * SMOOTH), 255)
         big_draw = ImageDraw.Draw(big)
+    taken = []  # where barcodes really printed: a logo that gives way is left out when it would touch one
     for el in design["elements"]:
         if not el["visible"]:
             continue
@@ -190,10 +275,12 @@ def render(label: Label, design: dict) -> Image.Image:
             # bars lying down along the box height: draw upright on a turned box, then turn it a quarter clockwise
             x0, y0, x1, y1 = _box(el)
             upright = Image.new("L", (y1 - y0, x1 - x0), 255)
-            _barcode(ImageDraw.Draw(upright), dict(el, x=0, y=0, w=el["h"], h=el["w"]), label)
+            length = _barcode(ImageDraw.Draw(upright), dict(el, x=0, y=0, w=el["h"], h=el["w"]), label)
             img.paste(upright.rotate(-90, expand=True), (x0, y0))
+            taken.append((x0, y0, x1, y0 + length))
         elif el["type"] == "barcode":
-            _barcode(draw, el, label)
+            x0, y0, x1, y1 = _box(el)
+            taken.append((x0, y0, x0 + _barcode(draw, el, label), y1))
         elif el["type"] == "rect" and smooth:
             # on the text copy, so white text placed on a black box stays white (edges stay on whole dots: k-times coordinates)
             x0, y0, x1, y1 = (v * SMOOTH for v in _box(el))
@@ -203,6 +290,9 @@ def render(label: Label, design: dict) -> Image.Image:
             draw.rectangle((x0, y0, x1 - 1, y1 - 1), fill=0)
         elif el["type"] == "image":
             x0, y0, x1, y1 = _box(el)
+            if el["gives_way"] and any(x0 < bx1 + GIVE_WAY and bx0 - GIVE_WAY < x1 and y0 < by1 + GIVE_WAY and by0 - GIVE_WAY < y1
+                                       for bx0, by0, bx1, by1 in taken):
+                continue
             logo = _logo(el["src"], x1 - x0, y1 - y0)
             img.paste(logo, (x0 + (x1 - x0 - logo.width) // 2, y0 + (y1 - y0 - logo.height) // 2))
     if smooth:

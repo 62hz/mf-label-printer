@@ -110,12 +110,14 @@ def validate(design: dict) -> dict:
                 bold=bool(el.get("bold", False)), italic=bool(el.get("italic", False)), reverse=bool(el.get("reverse", False)),
                 align=_choice(el, "align", ("left", "center", "right"), "left", where),
                 valign=_choice(el, "valign", ("top", "middle", "baseline"), "top", where),
-                upper=bool(el.get("upper", False)))
+                upper=bool(el.get("upper", False)),
+                lines=int(_num({"lines": el.get("lines", 1)}, "lines", 1, 3, where)))
         elif etype == "barcode":
             clean.update(content=_check_placeholders(str(el.get("content", "{sku}")), where),
                          mode=_choice(el, "mode", ("fit", "integer"), "fit", where), rotate=_rotate(el, where))
         elif etype == "image":
-            clean.update(src=_choice(el, "src", ("logo", "symbol", "screen-logo"), "logo", where))
+            clean.update(src=_choice(el, "src", ("logo", "symbol", "screen-logo"), "logo", where),
+                         gives_way=bool(el.get("gives_way", False)))  # left out when a barcode needs the room
         out["elements"].append(clean)
     return out
 

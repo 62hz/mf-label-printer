@@ -4,13 +4,13 @@
 
 const PROPS = {
   text: [["content", "text"], ["size_pt", "num"], ["min_size_pt", "num"], ["font", "fonts"], ["align", ["left", "center", "right"]], ["valign", ["top", "middle", "baseline"]],
-         ["bold", "bool"], ["italic", "bool"], ["reverse", "bool"], ["upper", "bool"]],
+         ["bold", "bool"], ["italic", "bool"], ["reverse", "bool"], ["upper", "bool"], ["lines", ["1", "2", "3"]]],
   barcode: [["content", "text"], ["mode", ["integer", "fit"]], ["rotate", ["0", "90"]]],
   rect: [],
-  image: [["src", ["logo", "symbol", "screen-logo"]]],
+  image: [["src", ["logo", "symbol", "screen-logo"]], ["gives_way", "bool"]],
 };
 const LABELS = { content: "Text", font: "Font", size_pt: "Size (pt)", min_size_pt: "Smallest (pt)", bold: "Bold", italic: "Italic",
-                 reverse: "White on black", upper: "Uppercase", rotate: "Turn (degrees)", src: "Logo file", align: "Align", valign: "Vertical", mode: "Bars", x: "X (mm)", y: "Y (mm)", w: "Width (mm)", h: "Height (mm)" };
+                 reverse: "White on black", upper: "Uppercase", lines: "Lines (wrap)", rotate: "Turn (degrees)", src: "Logo file", gives_way: "Hide if the barcode needs the room", align: "Align", valign: "Vertical", mode: "Bars", x: "X (mm)", y: "Y (mm)", w: "Width (mm)", h: "Height (mm)" };
 const DEFAULTS = {
   text: { type: "text", content: "{artist}", x: 2, y: 2, w: 20, h: 3, font: "arial", size_pt: 6, min_size_pt: 4, bold: false, italic: false, reverse: false, upper: false, align: "left", valign: "top" },
   barcode: { type: "barcode", content: "{sku}", x: 2, y: 22, w: 22, h: 5, mode: "integer" },

@@ -24,6 +24,7 @@ L, R, T, B = 2.5, 47.5, 2.5, 27.5     # live area
 W = R - L
 SEMI, MED, REG, LIGHT = "dm-sans-semibold", "dm-sans-medium", "dm-sans", "dm-sans-light"
 SYMBOL_W, SYMBOL_H = 6.0, 6.66        # the symbol at its 6 mm minimum, in its own proportions
+MINI_W, MINI_H = 3.15, 3.5            # the small symbol in the Price card barcode column (Django's call, below the guide's 6 mm)
 CAP = 0.7                             # DM Sans cap height in em
 
 
@@ -35,13 +36,14 @@ def cap_mm(pt: float) -> float:
     return pt * PX_PER_PT * CAP / DPM
 
 
-def text(eid, content, font, pt, x, w, baseline, *, align="left", min_pt=None, upper=False):
-    """A text line whose baseline is at `baseline` mm. The box is one em tall and ends on the baseline."""
+def text(eid, content, font, pt, x, w, baseline, *, align="left", min_pt=None, upper=False, lines=1, top=None):
+    """A text line whose baseline is at `baseline` mm. The box is one em tall and ends on the baseline;
+    a text that may wrap gets a box from `top` down to the baseline, the room its lines must fit in."""
     base = round(baseline * DPM)
-    h = round(pt * PX_PER_PT)             # one em, in whole dots
+    h = round(pt * PX_PER_PT) if top is None else base - round(top * DPM)
     return {"id": eid, "type": "text", "content": content, "x": x, "y": mm(base - h), "w": w, "h": mm(h),
             "font": font, "size_pt": pt, "min_size_pt": min_pt or pt, "bold": False, "italic": False, "reverse": False,
-            "upper": upper, "align": align, "valign": "baseline"}
+            "upper": upper, "lines": lines, "align": align, "valign": "baseline"}
 
 
 def barcode(x, y, w, h):
@@ -142,8 +144,8 @@ def catalogue_line():
     ])
 
 
-def artist_at(baseline, x=L, w=W, pt=12, min_pt=6.5):
-    return text("artist", "{artist}", SEMI, pt, x, w, baseline, min_pt=min_pt)
+def artist_at(baseline, x=L, w=W, pt=12, min_pt=6.5, lines=1, top=None):
+    return text("artist", "{artist}", SEMI, pt, x, w, baseline, min_pt=min_pt, lines=lines, top=top)
 
 
 def price_card():
@@ -151,9 +153,9 @@ def price_card():
     col = L + 6.5                      # right edge of the barcode column
     c = col + 0.5                      # left edge of the cells
     pad = 0.8
-    r1, r2, r3 = 10.0, 15.5, 21.25     # row lines (the artist row is taller: it carries the symbol)
+    r1, r2, r3 = 9.0, 15.5, 20.5       # row lines: artist, title (room for two lines each), format, then sku/price with the symbol
     f_end, y_end = 23.0, 32.0          # cell lines in the format row
-    p_start = 30.0                     # cell line in the last row
+    p_start = 31.0                     # cell line in the last row: wide enough for a 13-character SKU
 
     def label_(eid, words, x, base):
         return text(eid, words, LIGHT, 5, x + pad, 12, base, upper=True)   # cell names: Light, so the information reads first
@@ -163,14 +165,16 @@ def price_card():
         line("col", col, T, 0.25, B - T),
         line("r1", c, r1, R - c, 0.25), line("r2", c, r2, R - c, 0.25), line("r3", c, r3, R - c, 0.25),
         line("v-format", f_end, r2, 0.25, r3 - r2), line("v-year", y_end, r2, 0.25, r3 - r2), line("v-price", p_start, r3, 0.25, B - r3),
-        label_("l-artist", "Artist", c, T + 2.0), artist_at(r1 - 1.0, c + pad, R - SYMBOL_W - 1.0 - c - pad, pt=10, min_pt=5.5),
-        symbol(R - SYMBOL_W, T + round((r1 - T - SYMBOL_H) / 2, 2)),
-        label_("l-title", "Title", c, r1 + 2.0), text("title", "{title}", MED, 8, c + pad, R - c - 2 * pad, r2 - 1.0, min_pt=5),
-        label_("l-format", "Format", c, r2 + 2.0), text("format", "{format}", MED, 8, c + pad, f_end - c - 2 * pad, r3 - 1.0, min_pt=5, upper=True),
-        label_("l-year", "Year", f_end, r2 + 2.0), text("year", "{year}", MED, 8, f_end + pad, y_end - f_end - 2 * pad, r3 - 1.0, min_pt=5),
-        label_("l-genre", "Genre", y_end, r2 + 2.0), text("genre", "{genre}", MED, 8, y_end + pad, R - y_end - 2 * pad, r3 - 1.0, min_pt=5),
-        label_("l-sku", "SKU", c, r3 + 2.0), text("sku", "{sku}", MED, 6, c + pad, p_start - c - 2 * pad, B - 1.0, min_pt=5),
-        label_("l-price", "Price", p_start, r3 + 2.0), text("price", "{price}", SEMI, 10, p_start + pad, R - p_start - pad, B - 1.0, align="right", min_pt=7),
+        # artist and title explain themselves, as on the Disk Union card: no cell names, and room to wrap onto two lines
+        artist_at(r1 - 1.0, c + pad, R - c - 2 * pad, pt=10, min_pt=6, lines=2, top=T + 0.3),
+        text("title", "{title}", MED, 8, c + pad, R - c - 2 * pad, r2 - 1.0, min_pt=5.5, lines=2, top=r1 + 0.5),
+        label_("l-format", "Format", c, r2 + 1.8), text("format", "{format}", MED, 7, c + pad, f_end - c - 2 * pad, r3 - 1.0, min_pt=5, upper=True),
+        label_("l-year", "Year", f_end, r2 + 1.8), text("year", "{year}", MED, 7, f_end + pad, y_end - f_end - 2 * pad, r3 - 1.0, min_pt=5),
+        label_("l-genre", "Genre", y_end, r2 + 1.8), text("genre", "{genre}", MED, 7, y_end + pad, R - y_end - 2 * pad, r3 - 1.0, min_pt=5),
+        # a small symbol at the foot of the barcode column; it steps aside when a long SKU needs the whole column
+        {"id": "symbol", "type": "image", "src": "symbol", "x": L + (5.5 - MINI_W) / 2, "y": B - MINI_H, "w": MINI_W, "h": MINI_H, "gives_way": True},
+        label_("l-sku", "SKU", c, r3 + 2.0), text("sku", "{sku}", MED, 6, c + pad, p_start - c - 2 * pad, B - 1.0, min_pt=4.5),
+        label_("l-price", "Price", p_start, r3 + 2.0), text("price", "{price}", SEMI, 10, p_start + pad, R - p_start - pad, B - 1.0, align="right", min_pt=6.5),
     ])
 
 

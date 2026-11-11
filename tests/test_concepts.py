@@ -61,3 +61,77 @@ def test_rotate_accepts_only_0_or_90(value, ok):
     else:
         with pytest.raises(ValueError):
             designs.validate(d)
+
+
+LONG = [
+    Label("ORCHMANOEUV7", "Orchestral Manoeuvres In The Dark", "Architecture & Morality (40th Anniversary Deluxe Edition)", "CASSETTE", "1981", "Synth-pop, New Wave", 1250000),
+    Label("ABCDEFGHIJKLM", "Miles Davis", "Kind Of Blue (Original Mono Recording, Mint Box Set)", "VINYL", "1959", "Jazz", 12500000),
+    Label("4988031465987", "Kikagaku Moyo", "Kumoyo Island", "CD", "2022", "Psychedelic Rock", 299000),
+]
+
+
+@pytest.mark.parametrize("label", LONG, ids=lambda label: label.sku)
+def test_price_card_never_cuts_the_sku_or_the_price(label, monkeypatch):
+    drawn = []
+    real = render.ImageDraw.ImageDraw.text
+
+    def spy(self, xy, text, *a, **kw):
+        drawn.append(text)
+        return real(self, xy, text, *a, **kw)
+
+    monkeypatch.setattr(render.ImageDraw.ImageDraw, "text", spy)
+    render.render(label, load("mf-concept-price-card"))
+    assert label.sku in drawn
+    assert any(t.startswith("Rp") and not t.endswith("...") for t in drawn)
+
+
+def test_long_artist_and_title_wrap_instead_of_being_cut(monkeypatch):
+    drawn = []
+    real = render.ImageDraw.ImageDraw.text
+    monkeypatch.setattr(render.ImageDraw.ImageDraw, "text", lambda self, xy, text, *a, **kw: (drawn.append(text), real(self, xy, text, *a, **kw))[1])
+    render.render(Label("GODSPEED01", "Godspeed You! Black Emperor", "Lift Your Skinny Fists Like Antennas To Heaven (Remastered 2LP)",
+                        "VINYL", "2000", "Post-Rock", 785000), load("mf-concept-price-card"))
+    assert "Lift Your Skinny Fists Like Antennas" in drawn and "To Heaven (Remastered 2LP)" in drawn
+
+
+def test_a_short_name_stays_on_one_line(monkeypatch):
+    drawn = []
+    real = render.ImageDraw.ImageDraw.text
+    monkeypatch.setattr(render.ImageDraw.ImageDraw, "text", lambda self, xy, text, *a, **kw: (drawn.append(text), real(self, xy, text, *a, **kw))[1])
+    render.render(SAMPLES[1], load("mf-concept-price-card"))
+    assert "Charli XCX" in drawn and "Brat" in drawn
+
+
+@pytest.mark.parametrize("value, ok", [(1, True), (2, True), ("3", True), (0, False), (4, False), ("x", False)])
+def test_lines_accepts_1_to_3(value, ok):
+    d = {"name": "t", "width_mm": 50, "height_mm": 30, "gap_mm": 2,
+         "elements": [{"type": "text", "content": "{artist}", "x": 2, "y": 2, "w": 20, "h": 5, "size_pt": 8, "lines": value}]}
+    if ok:
+        assert designs.validate(d)["elements"][0]["lines"] == int(value)
+    else:
+        with pytest.raises(ValueError):
+            designs.validate(d)
+
+
+def _symbol_printed(label):
+    img = render.render(label, load("mf-concept-price-card")).convert("L")
+    corner = img.crop((20, 192, 64, 220))          # the foot of the barcode column, where the symbol sits
+    return sum(1 for v in corner.getdata() if v == 0)
+
+
+def test_the_symbol_shows_under_a_short_barcode_and_gives_way_to_a_long_one():
+    short = Label("NOUPASC001", "Nourished By Time", "The Passionate Ones", "CD", "2024", "Soul", 330000)
+    long_ = Label("ABCDEFGHIJKLM", "Miles Davis", "Kind Of Blue", "VINYL", "1959", "Jazz", 345000)
+    assert _symbol_printed(short) > 100
+    # the long SKU's bars reach into the corner; what is there must be bars only (rows of full-width black), no symbol shape
+    img = render.render(long_, load("mf-concept-price-card")).convert("L")
+    d = {"name": "t", "width_mm": 50, "height_mm": 30, "gap_mm": 2,
+         "elements": [dict(el) for el in load("mf-concept-price-card")["elements"] if el["id"] == "barcode"]}
+    bars_only = render.render(long_, d).convert("L")
+    box = (20, 192, 64, 220)
+    assert img.crop(box).tobytes() == bars_only.crop(box).tobytes()
+
+
+def test_gives_way_defaults_off():
+    d = {"name": "t", "width_mm": 50, "height_mm": 30, "gap_mm": 2, "elements": [{"type": "image", "x": 1, "y": 1, "w": 5, "h": 5}]}
+    assert designs.validate(d)["elements"][0]["gives_way"] is False
