@@ -1,5 +1,104 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>MF Label Printer</title></head>
-<body><p>MF Label Printer</p></body>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MF Label Printer</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <h1>MF Label Printer</h1>
+  <p id="status" class="muted">Reading DealPOS…</p>
+  <button id="refresh" type="button" class="ghost">Refresh catalog</button>
+  <form method="post" action="/logout"><button type="submit" class="ghost">Sign out</button></form>
+</header>
+
+<main>
+  <section class="add" aria-label="Add labels">
+    <div>
+      <label for="codes">SKUs or barcodes</label>
+      <textarea id="codes" rows="3" placeholder="AMEAMET158 ALEHEAC557 191404155127"></textarea>
+      <button id="addCodes" type="button">Add</button>
+    </div>
+    <div>
+      <label for="q">Search by name</label>
+      <input id="q" type="search" placeholder="artist or title" autocomplete="off">
+      <ul id="results" class="results"></ul>
+    </div>
+    <div>
+      <label for="sheet">Templater sheet (.xlsx or .csv)</label>
+      <input id="sheet" type="file" accept=".xlsx,.csv">
+    </div>
+  </section>
+
+  <p id="msg" role="status" class="msg" hidden></p>
+
+  <section class="work">
+    <div class="tablewrap">
+      <table id="rows">
+        <thead><tr>
+          <th>SKU</th><th>Artist</th><th>Title</th><th>Format</th><th>Year</th><th>Genre</th><th>Price</th><th>Copies</th><th></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <p id="empty" class="muted">No labels yet. Add SKUs, search, or upload a sheet.</p>
+    </div>
+    <aside class="preview" aria-label="Preview">
+      <div class="designbar">
+        <label for="designSel">Design</label>
+        <select id="designSel"></select>
+        <button id="designSave" type="button" class="ghost">Save</button>
+        <button id="designSaveAs" type="button" class="ghost">Save as…</button>
+        <button id="designDelete" type="button" class="ghost">Delete</button>
+      </div>
+      <p id="dirty" class="muted" hidden>Unsaved changes. Printing uses what you see.</p>
+      <img id="previewImg" alt="Label preview" hidden>
+      <p id="previewNote" class="muted">Click a row to preview it. The preview is the exact print.</p>
+      <p id="designNotes" class="msg error" hidden></p>
+      <p id="total" class="total"></p>
+    </aside>
+  </section>
+
+  <details id="designer" class="designer">
+    <summary>Edit the design</summary>
+    <div class="dgrid">
+      <div class="dleft">
+        <h2>Elements</h2>
+        <ul id="elList" class="ellist"></ul>
+        <div class="eladd">
+          <select id="addType" aria-label="Element type">
+            <option value="text">Text</option>
+            <option value="barcode">Barcode</option>
+            <option value="rect">Line or box</option>
+            <option value="image">Logo</option>
+          </select>
+          <button id="elAdd" type="button" class="ghost">Add</button>
+          <button id="elDup" type="button" class="ghost">Duplicate</button>
+          <button id="elDel" type="button" class="ghost">Remove</button>
+        </div>
+        <h2>Label</h2>
+        <div id="labelProps" class="props"></div>
+      </div>
+      <div class="dright">
+        <h2 id="propsTitle">Element</h2>
+        <div id="props" class="props"></div>
+        <p class="muted">Positions are in millimetres from the top-left corner. In text, use {artist} {title} {format} {year} {genre} {price} {sku}.</p>
+      </div>
+    </div>
+  </details>
+</main>
+
+<footer class="actions">
+  <button id="pdf" type="button">Download PDF</button>
+  <button id="xlsx" type="button" class="ghost">Download Excel</button>
+  <button id="testPdf" type="button" class="ghost">Test labels (PDF)</button>
+  <button id="usb" type="button" class="ghost" hidden>Print over USB</button>
+  <button id="usbTest" type="button" class="ghost" hidden>USB test labels</button>
+</footer>
+
+<script src="/static/usb.js"></script>
+<script src="/static/app.js"></script>
+<script src="/static/designer.js"></script>
+</body>
 </html>
