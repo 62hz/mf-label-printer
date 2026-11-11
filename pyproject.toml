@@ -1,0 +1,28 @@
+[project]
+name = "mf-label-printer"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "dealpos-mcp",
+    "pillow>=11",
+    "python-barcode>=0.15",
+    "openpyxl>=3.1.5",
+    "python-multipart>=0.0.9",
+]
+
+[tool.uv.sources]
+dealpos-mcp = { path = "../../../dealpos-mcp", editable = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "zxing-cpp>=2.2",
+    "pymupdf>=1.24",
+    "playwright>=1.45",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
