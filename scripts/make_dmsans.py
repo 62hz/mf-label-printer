@@ -1,11 +1,12 @@
-"""Make the two static DM Sans files the label renderer bundles, from the variable web font.
+"""Make the static DM Sans files the label renderer bundles, from the variable web font.
 
   py scripts/make_dmsans.py
 
 Needs fontTools, which is only used here: run it with the global interpreter (`py`), it is not a
 project dependency. Pillow draws text from static TrueType files, so the variable font that serves
-the page (labelprinter/static/fonts/dmsans-latin.woff) is cut into Regular (wght 400) and Bold
-(wght 700) at the 9 pt optical size (the roomy cut that suits small label text).
+the page (labelprinter/static/fonts/dmsans-latin.woff) is cut into Regular (wght 400), Medium (500),
+SemiBold (600) and Bold (700) at the 9 pt optical size (the roomy cut that suits small label text).
+The font registry lists Medium and SemiBold as their own families ("DM Sans Medium", "DM Sans SemiBold").
 
 DM Sans is released under the SIL Open Font License 1.1.
 """
@@ -19,7 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "labelprinter" / "static" / "fonts" / "dmsans-latin.woff"
 OUT_DIR = ROOT / "labelprinter" / "fonts"
 FAMILY = "DM Sans"
-CUTS = (("Regular", 400, False), ("Bold", 700, True))
+# The brand uses three weights (SemiBold titles, Medium labels and prices, Regular text); Bold stays for the old designs.
+CUTS = (("Regular", 400, False), ("Medium", 500, False), ("SemiBold", 600, False), ("Bold", 700, True))
 # name ids that would make FreeType (and so Pillow) report something other than FAMILY + style
 DROP_NAME_IDS = {16, 17, 21, 22, 25}
 

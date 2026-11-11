@@ -69,6 +69,7 @@ def validate(design: dict) -> dict:
         "height_mm": height,
         "gap_mm": _num(design, "gap_mm", 0, 10, "design"),
         "direction": int(_choice(design, "direction", (0, 1), 1, "design")),
+        "smooth_text": bool(design.get("smooth_text", False)),  # draw text enlarged and shrink it: even spacing for DM Sans at small sizes
         "elements": [],
     }
     elements = design.get("elements")
@@ -102,7 +103,7 @@ def validate(design: dict) -> dict:
             clean.update(content=_check_placeholders(str(el.get("content", "{sku}")), where),
                          mode=_choice(el, "mode", ("fit", "integer"), "fit", where))
         elif etype == "image":
-            clean.update(src=_choice(el, "src", ("logo",), "logo", where))
+            clean.update(src=_choice(el, "src", ("logo", "symbol", "screen-logo"), "logo", where))
         out["elements"].append(clean)
     return out
 

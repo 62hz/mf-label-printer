@@ -11,7 +11,7 @@ from tests.fakes import design
 def test_builtin_designs_are_listed_valid_and_read_only(tmp_path):
     store = DesignStore(tmp_path / "mine")
     rows = store.list()
-    assert [r["slug"] for r in rows] == ["mf-april", "mf-large", "mf-scan-safe"] and all(r["builtin"] for r in rows)
+    assert [r["slug"] for r in rows] == ["mf-april", "mf-brand-screen-logo", "mf-brand-symbol", "mf-large", "mf-scan-safe"] and all(r["builtin"] for r in rows)
     assert store.get(designs.DEFAULT_SLUG)["width_mm"] == 50
     with pytest.raises(ValueError, match="read-only"):
         store.save(design("mf-april"))

@@ -7,15 +7,15 @@ const PROPS = {
          ["bold", "bool"], ["italic", "bool"], ["reverse", "bool"]],
   barcode: [["content", "text"], ["mode", ["integer", "fit"]]],
   rect: [],
-  image: [],
+  image: [["src", ["logo", "symbol", "screen-logo"]]],
 };
 const LABELS = { content: "Text", font: "Font", size_pt: "Size (pt)", min_size_pt: "Smallest (pt)", bold: "Bold", italic: "Italic",
-                 reverse: "White on black", align: "Align", valign: "Vertical", mode: "Bars", x: "X (mm)", y: "Y (mm)", w: "Width (mm)", h: "Height (mm)" };
+                 reverse: "White on black", src: "Logo file", align: "Align", valign: "Vertical", mode: "Bars", x: "X (mm)", y: "Y (mm)", w: "Width (mm)", h: "Height (mm)" };
 const DEFAULTS = {
   text: { type: "text", content: "{artist}", x: 2, y: 2, w: 20, h: 3, font: "arial", size_pt: 6, min_size_pt: 4, bold: false, italic: false, reverse: false, align: "left", valign: "top" },
   barcode: { type: "barcode", content: "{sku}", x: 2, y: 22, w: 22, h: 5, mode: "integer" },
   rect: { type: "rect", x: 2, y: 16, w: 46, h: 0.25 },
-  image: { type: "image", src: "logo", x: 30, y: 16, w: 16, h: 10 },
+  image: { type: "image", src: "symbol", x: 38, y: 17, w: 9.4, h: 10.4 },
 };
 
 let designList = [];
@@ -185,7 +185,7 @@ function control(obj, key, kind, onChange) {
 function renderLabelProps() {
   const box = $("labelProps");
   box.replaceChildren();
-  for (const [key, text, kind] of [["width_mm", "Width (mm)", "num"], ["height_mm", "Height (mm)", "num"], ["gap_mm", "Gap (mm)", "num"], ["direction", "Direction", ["0", "1"]]]) {
+  for (const [key, text, kind] of [["width_mm", "Width (mm)", "num"], ["height_mm", "Height (mm)", "num"], ["gap_mm", "Gap (mm)", "num"], ["direction", "Direction", ["0", "1"]], ["smooth_text", "Smooth text", "bool"]]) {
     const holder = { [key]: key === "direction" ? String(design[key]) : design[key] };
     const ctl = control(holder, key, kind, () => { design[key] = key === "direction" ? Number(holder[key]) : holder[key]; markDirty(); });
     box.appendChild(field(text, ctl));

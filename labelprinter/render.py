@@ -12,7 +12,7 @@ from pathlib import Path
 
 from barcode import Code128
 from barcode.errors import BarcodeError
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 from . import designs, fonts
 from .model import Label, price_text
@@ -20,7 +20,14 @@ from .model import Label, price_text
 DPM = 8                                  # dots per mm
 PX_PER_PT = DPM * 25.4 / 72              # font size in points -> pixels at 203.2 dpi
 THRESHOLD = 160                          # grey level below which a dot prints
-LOGO_FILE = Path(__file__).resolve().parents[1] / "assets" / "mf-logo-main-black-1200px.png"
+SMOOTH = 4                               # scale of the copy that "smooth text" designs draw their text on
+ASSETS = Path(__file__).resolve().parents[1] / "assets"
+# Image elements pick one of the brand's logo files (Sara's artwork, used as supplied, never redrawn):
+#   logo        the hand-drawn main logotype (signage, packaging; the old designs use it)
+#   symbol      the hand-drawn stack of discs on its own (stickers, small spaces; at least 6 mm)
+#   screen-logo the symbol + "Medium Format" set in DM Sans (small sizes and transactional documents; at least 30 mm wide)
+LOGO_FILES = {"logo": "mf-logo-main-black-1200px.png", "symbol": "mf-symbol-black-1024px.png",
+              "screen-logo": "mf-screen-logo-black-2400px.png"}
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
 
 
@@ -106,14 +113,15 @@ def _box(el: dict) -> tuple[int, int, int, int]:
     return x0, y0, x0 + max(1, dots(el["w"])), y0 + max(1, dots(el["h"]))
 
 
-def _text(draw, el: dict, label: Label) -> None:
+def _text(draw, el: dict, label: Label, k: int = 1) -> None:
+    """Draw one text element. k is the drawing scale: 1 draws straight onto the label, SMOOTH draws on the enlarged copy."""
     text = expand(el["content"], label)
     if not text:
         return
-    x0, y0, x1, y1 = _box(el)
-    pad = 2 if el["reverse"] else 0
+    x0, y0, x1, y1 = (v * k for v in _box(el))
+    pad = 2 * k if el["reverse"] else 0
     path = fonts.resolve(el["font"], el["bold"], el["italic"])
-    text, f = fit(draw, text, path, el["size_pt"] * PX_PER_PT, max(1, x1 - x0 - 2 * pad), min(el["min_size_pt"], el["size_pt"]) * PX_PER_PT)
+    text, f = fit(draw, text, path, el["size_pt"] * PX_PER_PT * k, max(1, x1 - x0 - 2 * pad), min(el["min_size_pt"], el["size_pt"]) * PX_PER_PT * k)
     if el["reverse"]:
         draw.rectangle((x0, y0, x1 - 1, y1 - 1), fill=0)
     ax = {"left": x0 + pad, "center": (x0 + x1) // 2, "right": x1 - pad}[el["align"]]
@@ -145,9 +153,11 @@ def _barcode(draw, el: dict, label: Label) -> None:
             i += 1
 
 
-@lru_cache(maxsize=8)
-def _logo(w: int, h: int) -> Image.Image:
-    logo = Image.open(LOGO_FILE).convert("RGBA")
+@lru_cache(maxsize=16)
+def _logo(src: str, w: int, h: int) -> Image.Image:
+    logo = Image.open(ASSETS / LOGO_FILES[src]).convert("RGBA")
+    if src != "logo":  # the old logo keeps its margin so the existing designs print exactly as before
+        logo = logo.crop(logo.getchannel("A").getbbox() or (0, 0, *logo.size))  # trim the file's empty margin: the box is the artwork
     white = Image.new("RGBA", logo.size, (255, 255, 255, 255))
     white.alpha_composite(logo)
     flat = white.convert("L")
@@ -160,11 +170,18 @@ def render(label: Label, design: dict) -> Image.Image:
     width, height = size_dots(design)
     img = Image.new("L", (width, height), 255)
     draw = ImageDraw.Draw(img)
+    smooth = design["smooth_text"]
+    if smooth:  # text drawn on a SMOOTH-times copy and shrunk keeps even letter spacing at small sizes; the barcode and boxes stay on whole dots
+        big = Image.new("L", (width * SMOOTH, height * SMOOTH), 255)
+        big_draw = ImageDraw.Draw(big)
     for el in design["elements"]:
         if not el["visible"]:
             continue
         if el["type"] == "text":
-            _text(draw, el, label)
+            if smooth:
+                _text(big_draw, el, label, SMOOTH)
+            else:
+                _text(draw, el, label)
         elif el["type"] == "barcode":
             _barcode(draw, el, label)
         elif el["type"] == "rect":
@@ -172,8 +189,10 @@ def render(label: Label, design: dict) -> Image.Image:
             draw.rectangle((x0, y0, x1 - 1, y1 - 1), fill=0)
         elif el["type"] == "image":
             x0, y0, x1, y1 = _box(el)
-            logo = _logo(x1 - x0, y1 - y0)
+            logo = _logo(el["src"], x1 - x0, y1 - y0)
             img.paste(logo, (x0 + (x1 - x0 - logo.width) // 2, y0 + (y1 - y0 - logo.height) // 2))
+    if smooth:
+        img = ImageChops.darker(img, big.resize((width, height), Image.LANCZOS))
     return img.point(lambda v: 255 if v >= THRESHOLD else 0).convert("1")
 
 

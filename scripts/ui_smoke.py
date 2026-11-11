@@ -133,7 +133,7 @@ def main():
             groups = lambda: page.eval_on_selector_all(font_select + " optgroup", "els => els.map(e => e.label)")
             assert groups() == ["Brand", "Installed"], groups()
             page.fill('#props input[data-role="font-filter"]', "dm")
-            expect(page.locator(font_select + " option")).to_have_count(2)                # DM Sans, and the chosen Arial stays listed
+            expect(page.locator(font_select + " option")).to_have_count(4)                # the three DM Sans weights, and the chosen Arial stays listed
             with page.expect_request(lambda r: r.url.endswith("/api/label.png") and '"font":"dm-sans"' in (r.post_data or "")):
                 page.select_option(font_select, label="DM Sans")
             expect(page.locator('#props button[data-role="font-remove"]')).to_be_hidden()  # the brand font cannot be removed
@@ -181,11 +181,11 @@ def main():
             assert len(pymupdf.open(dl.value.path())) == 2
 
             page.reload()                                                                # saved designs survive a reload
-            expect(page.locator("#designSel option")).to_have_count(4)
+            expect(page.locator("#designSel option")).to_have_count(6)                   # five built in + the saved one
             page.select_option("#designSel", "cd-shelf")
             expect(page.locator("#designDelete")).to_be_enabled()
             page.click("#designDelete")
-            expect(page.locator("#designSel option")).to_have_count(3)
+            expect(page.locator("#designSel option")).to_have_count(5)
             expect(page.locator("#designSel")).to_have_value("mf-april")
 
             body = page.inner_text("body")
