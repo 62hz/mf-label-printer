@@ -117,7 +117,8 @@ def main():
 
 
             # ---- designer: edit, see it in the preview request, save as, print with it, reload, delete
-            expect(page.locator("#designSel")).to_have_value("mf-april")
+            expect(page.locator("#designSel")).to_have_value("mf-concept-price-card")   # the page opens on the MF Price card
+            page.select_option("#designSel", "mf-april")
             expect(page.locator("#designDelete")).to_be_disabled()                      # built-in designs cannot be deleted
             expect(page.locator("#designNotes")).to_contain_text("1 dot")               # April design has 1-dot bars
             page.click("#designer summary")
@@ -186,7 +187,7 @@ def main():
             expect(page.locator("#designDelete")).to_be_enabled()
             page.click("#designDelete")
             expect(page.locator("#designSel option")).to_have_count(9)
-            expect(page.locator("#designSel")).to_have_value("mf-april")
+            expect(page.locator("#designSel")).to_have_value("mf-concept-price-card")
 
             body = page.inner_text("body")
             assert "undefined" not in body and "null" not in body.lower().replace("nullable", ""), body[:200]

@@ -40,7 +40,7 @@ def main() -> None:
     ap.add_argument("codes", nargs="+", help="SKUs (variant codes) or product barcodes")
     ap.add_argument("--copies", type=int, default=1, help="copies of each label (default 1)")
     ap.add_argument("--out", type=Path, default=ROOT / "outputs", help="output folder")
-    ap.add_argument("--design", default=DEFAULT_SLUG, help="design slug (see the Design menu in the app), default mf-april")
+    ap.add_argument("--design", default=DEFAULT_SLUG, help="design slug (see the Design menu in the app), default mf-concept-price-card (MF Price card)")
     args = ap.parse_args()
     design = DesignStore(ROOT / "data" / "designs").get(args.design)
     result = asyncio.run(build(args.codes, Catalog(read_only_client()), args.out, args.copies, design=design))

@@ -40,7 +40,7 @@ URL: `https://YOUR-HOST.ts.net:10000`. The server is up only while this PC runs 
 
 ## Designs
 
-A design is the label layout in millimetres: label size, gap, direction and a list of elements (text, barcode, line or box, logo). Built in and read-only: **MF April** (your April layout, 6 pt text), **MF Large** (bigger type), **MF Scan-safe** (2-dot barcode, smaller logo). Open "Edit the design" in the page, change elements by number, then Save or Save as. Your designs are files in `data/designs/`. Preview, PDF and USB print all use the design on screen, saved or not.
+A design is the label layout in millimetres: label size, gap, direction and a list of elements (text, barcode, line or box, logo). Built in and read-only: **MF Price card** (the default the page opens with: brand DM Sans, ruled grid, barcode up the left edge), **MF Scan-safe** (the alternative: 2-dot barcode for scanners that miss 1-dot bars, and for SKUs too long for the Price card), **MF April** (your April layout, 6 pt text), **MF Large** (bigger type), plus the brand and concept studies. Open "Edit the design" in the page, change elements by number, then Save or Save as. Your designs are files in `data/designs/`. Preview, PDF and USB print all use the design on screen, saved or not.
 
 MF Brand designs (built in, from the brand guide): **Ledger**, **Barcode foot** and **Symbol column**. They are generated from one grid by `uv run python scripts/make_brand_designs.py` (2.5 mm margins, text on a 0.5 mm baseline grid, DM Sans 6 / 8 / 10 / 12 pt, SemiBold artist, Medium price and labels, Regular text, no black chips, the symbol at 6 mm or no mark). Edit that script, not the JSON files. `uv run python scripts/brand_preview.py --guides` renders sample labels with the margins and a 1 mm grid drawn on top. Text elements can sit on a baseline (`valign: baseline`, so a long line that shrinks stays on its line), be set in capitals (`upper`), and a design can draw its text smooth (`smooth_text`: drawn 4x and shrunk, for even letter spacing at small sizes). Logo files: `logo` (Sara's hand-drawn logotype, used by the older designs), `symbol`, `screen-logo` (at least 30 mm wide).
 
@@ -60,7 +60,8 @@ Barcode rule: bars print cleanly only when every bar is a whole number of printe
 | Black and white swapped | start the server with `LABELPRINTER_INVERT=1` |
 | Image upside down or mirrored | design, Label, Direction 0 or 1, Save |
 | Labels drift or skip | design, Label, Gap (mm), match the roll |
-| Barcode A or B will not scan, C does | use MF Scan-safe: start the server with `LABELPRINTER_DEFAULT_DESIGN=mf-scan-safe` so the page opens with it, or make the barcode element 2 dots wide |
+| The Price card barcode will not scan | pick MF Scan-safe in the Design menu (2-dot bars, the alternative); to open the page on it, start the server with `LABELPRINTER_DEFAULT_DESIGN=mf-scan-safe` |
+| A SKU longer than 13 characters | its barcode is longer than the Price card column: print that record with MF Scan-safe |
 | Text cut at the edge | move or narrow the element, the preview shows the exact print |
 
 Record what worked here once known: _not tested on a unit yet_.
@@ -68,7 +69,7 @@ Record what worked here once known: _not tested on a unit yet_.
 ## Command line
 
 ```bash
-vault run dealpos -- uv run python scripts/labels_cli.py AMEAMET158 ALEHEAC557 --copies 2 --design mf-april
+vault run dealpos -- uv run python scripts/labels_cli.py AMEAMET158 ALEHEAC557 --copies 2 --design mf-scan-safe
 vault run dealpos -- uv run python scripts/live_check.py AMEAMET158 ALEHEAC557     # read-only, shows what each label would say
 uv run python scripts/make_samples.py "C:/Users/SER5 MAX/Documents/#MEDFOR/04APR/Barcode Templater April.xlsx" 9
 ```
