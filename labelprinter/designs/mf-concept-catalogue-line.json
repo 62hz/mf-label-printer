@@ -23,7 +23,9 @@
       "upper": false,
       "lines": 1,
       "align": "left",
-      "valign": "baseline"
+      "valign": "baseline",
+      "blank": "",
+      "first_item": false
     },
     {
       "id": "meta",
@@ -42,7 +44,9 @@
       "upper": true,
       "lines": 1,
       "align": "right",
-      "valign": "baseline"
+      "valign": "baseline",
+      "blank": "",
+      "first_item": false
     },
     {
       "id": "rule",
@@ -69,7 +73,9 @@
       "upper": false,
       "lines": 1,
       "align": "left",
-      "valign": "baseline"
+      "valign": "baseline",
+      "blank": "",
+      "first_item": false
     },
     {
       "id": "title",
@@ -88,7 +94,9 @@
       "upper": false,
       "lines": 1,
       "align": "left",
-      "valign": "baseline"
+      "valign": "baseline",
+      "blank": "",
+      "first_item": false
     },
     {
       "id": "barcode",

@@ -89,9 +89,22 @@ def test_long_artist_and_title_wrap_instead_of_being_cut(monkeypatch):
     drawn = []
     real = render.ImageDraw.ImageDraw.text
     monkeypatch.setattr(render.ImageDraw.ImageDraw, "text", lambda self, xy, text, *a, **kw: (drawn.append(text), real(self, xy, text, *a, **kw))[1])
-    render.render(Label("GODSPEED01", "Godspeed You! Black Emperor", "Lift Your Skinny Fists Like Antennas To Heaven (Remastered 2LP)",
+    render.render(Label("GODSPEED01", "Godspeed You! Black Emperor", "Lift Your Skinny Fists",
                         "VINYL", "2000", "Post-Rock", 785000), load("mf-concept-price-card"))
-    assert "Lift Your Skinny Fists Like Antennas" in drawn and "To Heaven (Remastered 2LP)" in drawn
+    assert "Godspeed You! Black" in drawn and "Emperor" in drawn                  # the artist wraps
+    drawn.clear()
+    render.render(Label("VARIOUS0042", "Various Artists", "Kampung Gaul: Indonesian Disco, Funk & Boogie 1976-1989",
+                        "VINYL", "2023", "Funk / Soul, Disco", 520000), load("mf-concept-price-card"))
+    assert len([t for t in drawn if t.startswith(("Kampung", "Disco"))]) == 2      # under a one-line artist the title wraps
+    assert "Funk / Soul" in drawn                                                  # only the first genre
+
+
+def test_empty_fields_print_an_en_dash(monkeypatch):
+    drawn = []
+    real = render.ImageDraw.ImageDraw.text
+    monkeypatch.setattr(render.ImageDraw.ImageDraw, "text", lambda self, xy, text, *a, **kw: (drawn.append(text), real(self, xy, text, *a, **kw))[1])
+    render.render(Label("ALEHEAC557", "Various Artists", "Cafe de Flore", "CD", "", "", 95000), load("mf-concept-price-card"))
+    assert drawn.count("–") == 2
 
 
 def test_a_short_name_stays_on_one_line(monkeypatch):

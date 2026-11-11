@@ -109,12 +109,18 @@ def validate(design: dict) -> dict:
                 min_size_pt=_num({"min_size_pt": el.get("min_size_pt", 4)}, "min_size_pt", 2, 60, where),
                 bold=bool(el.get("bold", False)), italic=bool(el.get("italic", False)), reverse=bool(el.get("reverse", False)),
                 align=_choice(el, "align", ("left", "center", "right"), "left", where),
-                valign=_choice(el, "valign", ("top", "middle", "baseline"), "top", where),
+                valign=_choice(el, "valign", ("top", "middle", "baseline", "flow"), "top", where),
                 upper=bool(el.get("upper", False)),
-                lines=int(_num({"lines": el.get("lines", 1)}, "lines", 1, 3, where)))
+                lines=int(_num({"lines": el.get("lines", 1)}, "lines", 1, 3, where)),
+                first_item=bool(el.get("first_item", False)),          # only the part before the first comma
+                blank=str(el.get("blank", ""))[:4],                     # shown when the field is empty, e.g. an en dash
+                after=str(el.get("after", ""))[:60],                    # flow: start under this element's last line
+                after_gap=_num({"after_gap": el.get("after_gap", 0)}, "after_gap", 0, 20, where))
         elif etype == "barcode":
             clean.update(content=_check_placeholders(str(el.get("content", "{sku}")), where),
-                         mode=_choice(el, "mode", ("fit", "integer"), "fit", where), rotate=_rotate(el, where))
+                         mode=_choice(el, "mode", ("fit", "integer"), "fit", where), rotate=_rotate(el, where),
+                         center=bool(el.get("center", False)),
+                         reserve=_num({"reserve": el.get("reserve", 0)}, "reserve", 0, 100, where))
         elif etype == "image":
             clean.update(src=_choice(el, "src", ("logo", "symbol", "screen-logo"), "logo", where),
                          gives_way=bool(el.get("gives_way", False)))  # left out when a barcode needs the room

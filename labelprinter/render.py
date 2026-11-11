@@ -21,6 +21,7 @@ DPM = 8                                  # dots per mm
 PX_PER_PT = DPM * 25.4 / 72              # font size in points -> pixels at 203.2 dpi
 THRESHOLD = 160                          # grey level below which a dot prints
 GIVE_WAY = 4                             # dots of clear space a giving-way logo keeps from a barcode
+FOLLOW_GAP = 8                           # dots between a barcode and the logo that follows it (1 mm)
 SMOOTH = 4                               # scale of the copy that "smooth text" designs draw their text on
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
 # Image elements pick one of the brand's logo files (Sara's artwork, used as supplied, never redrawn):
@@ -122,7 +123,7 @@ def _wrap(draw, words: list[str], f, avail: int, lines: int):
     return rows, rest
 
 
-def fit_lines(draw, text: str, path: Path, max_px: float, avail: int, min_px: float, lines: int, max_h: int):
+def fit_lines(draw, text: str, path: Path, max_px: float, avail: int, min_px: float, lines: int, max_h: int, flow: bool = False):
     """Like fit(), but a long text may break onto up to `lines` lines at word boundaries.
 
     One line is kept while it fits at WRAP_AT of the size or more. Then, from the full size down in 0.5 px steps,
@@ -149,7 +150,7 @@ def fit_lines(draw, text: str, path: Path, max_px: float, avail: int, min_px: fl
             return [text], font(path, px)
         f = font(path, px)
         rows, rest = _wrap(draw, words, f, avail, lines)
-        block = f.getmetrics()[0] + (len(rows) + (1 if rest else 0) - 1) * round(f.size * LEADING)
+        block = (0 if flow else f.getmetrics()[0]) + (len(rows) + (1 if rest else 0) - 1) * round(f.size * LEADING)
         if block > max_h:
             continue
         last = " ".join(rest)
@@ -157,7 +158,7 @@ def fit_lines(draw, text: str, path: Path, max_px: float, avail: int, min_px: fl
             return rows + ([last] if rest else []), f
     f = font(path, floor_px)                     # nothing fits: smallest size, cut the end
     rows, rest = _wrap(draw, words, f, avail, lines)
-    block = f.getmetrics()[0] + len(rows) * round(f.size * LEADING)
+    block = (0 if flow else f.getmetrics()[0]) + len(rows) * round(f.size * LEADING)
     if rest and block <= max_h:
         rows = [r if draw.textlength(r, font=f) <= avail else fit(draw, r, path, floor_px, avail, floor_px)[0] for r in rows]
         return rows + [fit(draw, " ".join(rest), path, floor_px, avail, floor_px)[0]], f
@@ -179,20 +180,30 @@ def _box(el: dict) -> tuple[int, int, int, int]:
     return x0, y0, x0 + max(1, dots(el["w"])), y0 + max(1, dots(el["h"]))
 
 
-def _text(draw, el: dict, label: Label, k: int = 1) -> None:
-    """Draw one text element. k is the drawing scale: 1 draws straight onto the label, SMOOTH draws on the enlarged copy."""
+def _text(draw, el: dict, label: Label, k: int = 1, flow_y: int | None = None):
+    """Draw one text element. k is the drawing scale: 1 draws straight onto the label, SMOOTH draws on the enlarged copy.
+
+    valign "flow": the box top is the first baseline (or flow_y, the baseline handed on by the element this one
+    follows), lines run downward, and the box bottom is the lowest baseline allowed. Returns the last baseline drawn,
+    in drawing dots, so a following element can continue under it; None when nothing was drawn."""
     text = expand(el["content"], label)
+    if text and el["first_item"]:
+        text = text.split(",")[0].strip()
     if not text:
-        return
+        text = el["blank"]
+    if not text:
+        return None
     if el["upper"]:
         text = text.upper()
     x0, y0, x1, y1 = (v * k for v in _box(el))
+    if el["valign"] == "flow" and flow_y is not None:
+        y0 = flow_y
     pad = 2 * k if el["reverse"] else 0
     path = fonts.resolve(el["font"], el["bold"], el["italic"])
     avail = max(1, x1 - x0 - 2 * pad)
     max_px, min_px = el["size_pt"] * PX_PER_PT * k, min(el["min_size_pt"], el["size_pt"]) * PX_PER_PT * k
     if el["lines"] > 1 and el["valign"] != "middle":
-        rows, f = fit_lines(draw, text, path, max_px, avail, min_px, el["lines"], y1 - y0)
+        rows, f = fit_lines(draw, text, path, max_px, avail, min_px, el["lines"], y1 - y0, flow=el["valign"] == "flow")
     else:
         rows, f = None, None
     if rows is None or len(rows) == 1:
@@ -207,15 +218,21 @@ def _text(draw, el: dict, label: Label, k: int = 1) -> None:
         for i, row in enumerate(rows):
             if el["valign"] == "baseline":   # the last line sits on the baseline, earlier lines above it
                 draw.text((ax, y1 - (len(rows) - 1 - i) * lead), row, font=f, fill=fill, anchor=h + "s")
+            elif el["valign"] == "flow":     # the first line sits on the first baseline, later lines below it
+                draw.text((ax, y0 + i * lead), row, font=f, fill=fill, anchor=h + "s")
             else:
                 draw.text((ax, y0 + i * lead), row, font=f, fill=fill, anchor=h + "a")
-        return
+        return y0 + (len(rows) - 1) * lead if el["valign"] == "flow" else y1
+    if el["valign"] == "flow":
+        draw.text((ax, y0), text, font=f, fill=255 if el["reverse"] else 0, anchor=h + "s")
+        return y0
     if el["valign"] == "middle":
         draw.text((ax, (y0 + y1) // 2), text, font=f, fill=255 if el["reverse"] else 0, anchor=h + "m")
     elif el["valign"] == "baseline":  # the bottom edge of the box is the baseline, so a text that shrinks to fit stays on its line
         draw.text((ax, y1), text, font=f, fill=255 if el["reverse"] else 0, anchor=h + "s")
     else:
         draw.text((ax, y0), text, font=f, fill=255 if el["reverse"] else 0, anchor=h + "a")
+    return y1
 
 
 def _barcode(draw, el: dict, label: Label) -> int:
@@ -263,21 +280,29 @@ def render(label: Label, design: dict) -> Image.Image:
         big = Image.new("L", (width * SMOOTH, height * SMOOTH), 255)
         big_draw = ImageDraw.Draw(big)
     taken = []  # where barcodes really printed: a logo that gives way is left out when it would touch one
+    last_base = {}  # element id -> last baseline drawn, in label dots, for text that follows it
     for el in design["elements"]:
         if not el["visible"]:
             continue
         if el["type"] == "text":
-            if smooth:
-                _text(big_draw, el, label, SMOOTH)
-            else:
-                _text(draw, el, label)
+            k = SMOOTH if smooth else 1
+            flow_y = None
+            if el["after"] and last_base.get(el["after"]) is not None:
+                flow_y = round((last_base[el["after"]] + el["after_gap"] * DPM) * k)
+            end = _text(big_draw if smooth else draw, el, label, k, flow_y)
+            last_base[el["id"]] = None if end is None else end / k
         elif el["type"] == "barcode" and el["rotate"] == 90:
             # bars lying down along the box height: draw upright on a turned box, then turn it a quarter clockwise
             x0, y0, x1, y1 = _box(el)
             upright = Image.new("L", (y1 - y0, x1 - x0), 255)
             length = _barcode(ImageDraw.Draw(upright), dict(el, x=0, y=0, w=el["h"], h=el["w"]), label)
-            img.paste(upright.rotate(-90, expand=True), (x0, y0))
-            taken.append((x0, y0, x1, y0 + length))
+            span, offset = y1 - y0, 0
+            if el["center"]:  # centred in the box, or in the box less its reserve (room kept for a logo) when it fits there
+                reserve = dots(el["reserve"])
+                room = span - reserve if length <= span - reserve else span
+                offset = (room - length) // 2
+            img.paste(upright.rotate(-90, expand=True).crop((0, 0, x1 - x0, length)), (x0, y0 + offset))
+            taken.append((x0, y0 + offset, x1, y0 + offset + length))
         elif el["type"] == "barcode":
             x0, y0, x1, y1 = _box(el)
             taken.append((x0, y0, x0 + _barcode(draw, el, label), y1))
@@ -290,11 +315,18 @@ def render(label: Label, design: dict) -> Image.Image:
             draw.rectangle((x0, y0, x1 - 1, y1 - 1), fill=0)
         elif el["type"] == "image":
             x0, y0, x1, y1 = _box(el)
-            if el["gives_way"] and any(x0 < bx1 + GIVE_WAY and bx0 - GIVE_WAY < x1 and y0 < by1 + GIVE_WAY and by0 - GIVE_WAY < y1
-                                       for bx0, by0, bx1, by1 in taken):
-                continue
             logo = _logo(el["src"], x1 - x0, y1 - y0)
-            img.paste(logo, (x0 + (x1 - x0 - logo.width) // 2, y0 + (y1 - y0 - logo.height) // 2))
+            px, py = x0 + (x1 - x0 - logo.width) // 2, y0 + (y1 - y0 - logo.height) // 2
+            if el["gives_way"]:
+                # the logo sits at the top of its box, or just below a barcode that runs into the box;
+                # when the barcode leaves no room for it, it is left out
+                py = y0
+                for bx0, by0, bx1, by1 in taken:
+                    if px < bx1 + GIVE_WAY and bx0 - GIVE_WAY < px + logo.width and py < by1 + GIVE_WAY and by0 - GIVE_WAY < py + logo.height:
+                        py = by1 + FOLLOW_GAP
+                if py + logo.height > y1:
+                    continue
+            img.paste(logo, (px, py))
     if smooth:
         img = ImageChops.darker(img, big.resize((width, height), Image.LANCZOS))
     return img.point(lambda v: 255 if v >= THRESHOLD else 0).convert("1")
