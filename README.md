@@ -21,7 +21,7 @@ vault run dealpos mf-label-printer -- uv run python -m labelprinter.server --por
 
 `vault` is found in PowerShell and the Terminal panel; Git Bash does not see it (use `vault.cmd` there).
 
-Needs vault project `dealpos` (DealPOS keys, exists) and project `mf-label-printer` with `LABELPRINTER_PASSWORD` (8+ characters). Django sets that himself: `vault set mf-label-printer LABELPRINTER_PASSWORD`.
+Needs vault project `dealpos` (DealPOS keys, exists) and project `mf-label-printer` with `LABELPRINTER_PASSWORD` (12+ characters). Django sets that himself: `vault set mf-label-printer LABELPRINTER_PASSWORD`.
 
 ## Reach it from the store
 

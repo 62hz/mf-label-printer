@@ -45,12 +45,13 @@ class Catalog:
         self._loaded_at = self._clock()
         return len(rows)
 
-    async def refresh_if_stale(self, min_age: float = 60) -> int:
-        """The Refresh button: re-read DealPOS unless the list is already less than `min_age` seconds old."""
+    async def refresh_if_stale(self, min_age: float = 60) -> tuple[int, bool]:
+        """The Refresh button: re-read DealPOS unless the list is already less than `min_age` seconds old.
+        Returns (product count, whether DealPOS was really read)."""
         async with self._lock:
             if self._loaded_at is not None and self._clock() - self._loaded_at < min_age:
-                return len(self._products)
-            return await self.refresh()
+                return len(self._products), False
+            return await self.refresh(), True
 
     async def ensure(self) -> None:
         async with self._lock:

@@ -7,6 +7,7 @@ Binds 127.0.0.1; reach it from the store through Tailscale Funnel (see README).
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -29,9 +30,12 @@ ROOT = Path(__file__).resolve().parents[1]
 STATIC = Path(__file__).resolve().parent / "static"
 MAX_ROWS = 200       # label rows per request
 MAX_TOTAL = 500      # printed labels per request, copies included
+MAX_CODES = 500      # distinct codes per resolve request
+_CODE = re.compile(r"[^\s,;]+")  # a code is whatever sits between spaces, commas, semicolons and new lines
 MAX_UPLOAD = 5 * 1024 * 1024
 MAX_JSON = 2 * 1024 * 1024
 MAX_LOGIN_BODY = 4096
+MIN_PASSWORD = 12    # characters
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "testserver", "[::1]", "::1"}  # "::1": urlsplit drops the brackets
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -54,6 +58,15 @@ async def json_body(request: Request) -> dict:
     if not isinstance(payload, dict):
         raise BadRequest("Expected a JSON object.")
     return payload
+
+
+def check_code_count(text: str) -> None:
+    """At most MAX_CODES distinct codes (same splitting and case rules as Catalog.resolve), stopping as soon as it is over."""
+    seen = set()
+    for token in _CODE.finditer(text):
+        seen.add(token.group().casefold())
+        if len(seen) > MAX_CODES:
+            raise BadRequest(f"Too many codes (limit {MAX_CODES}).")
 
 
 def parse_labels(payload) -> list[Label]:
@@ -112,8 +125,8 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
         return wrapper
 
     def client_id(request: Request) -> str:
-        # Uvicorn puts the real address (resolved from the Tailscale proxy) in request.client.
-        # X-Forwarded-For is attacker-controlled, so it is never read.
+        # request.client is the TCP peer: main() starts uvicorn with proxy_headers=False, and this code never
+        # reads X-Forwarded-For, which the sender controls.
         return request.client.host if request.client else "?"
 
     async def login_page(request: Request):
@@ -156,11 +169,13 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
 
     @guarded
     async def refresh(request: Request):
-        return JSONResponse({"products": await catalog.refresh_if_stale()})
+        count, refreshed = await catalog.refresh_if_stale()
+        return JSONResponse({"products": count, "refreshed": refreshed})
 
     @guarded
     async def resolve(request: Request):
         text = str((await json_body(request)).get("text", ""))
+        check_code_count(text)
         labels, missing = await catalog.resolve(text)
         return JSONResponse({"labels": [l.to_dict() for l in labels], "missing": missing})
 
@@ -191,7 +206,10 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
     @guarded
     async def label_png(request: Request):
         payload = await json_body(request)
-        label, design = Label.from_dict(payload.get("label", {})), design_from(payload)
+        raw = payload.get("label", {})
+        if not isinstance(raw, dict):
+            raise BadRequest("Expected a label object.")
+        label, design = Label.from_dict(raw), design_from(payload)
         png = await run_in_threadpool(png_bytes, label, design)
         warnings = await run_in_threadpool(notes, label, design)
         return Response(png, media_type="image/png", headers={"X-Label-Notes": " | ".join(warnings)})
@@ -278,10 +296,11 @@ def main() -> None:
     ap.add_argument("--host", default="127.0.0.1")
     args = ap.parse_args()
     password = os.environ.get("LABELPRINTER_PASSWORD", "")
-    if len(password) < 8:
-        sys.exit("Set LABELPRINTER_PASSWORD (8+ characters), e.g. run with: vault run dealpos mf-label-printer -- ...")
+    if len(password) < MIN_PASSWORD:
+        sys.exit(f"Set LABELPRINTER_PASSWORD ({MIN_PASSWORD}+ characters), e.g. run with: vault run dealpos mf-label-printer -- ...")
     app = create_app(Catalog(read_only_client()), password, auth.get_session_key(ROOT / "data"))
-    uvicorn.run(app, host=args.host, port=args.port)
+    # proxy_headers=False: no forwarded header is ever trusted, so the login throttle keys on the real TCP peer.
+    uvicorn.run(app, host=args.host, port=args.port, proxy_headers=False)
 
 
 if __name__ == "__main__":

@@ -65,7 +65,7 @@ def test_resolve_search_status_enrich(signed_in):
     assert signed_in.get("/api/status").json()["products"] == 3
     assert signed_in.post("/api/enrich", json={"sku": "AMEAMET158"}).json() == {"year": "1999", "genre": "Rock"}
     assert signed_in.post("/api/enrich", json={}).status_code == 400
-    assert signed_in.post("/api/refresh").json() == {"products": 3}
+    assert signed_in.post("/api/refresh").json() == {"products": 3, "refreshed": False}  # the list was read a moment ago
 
 
 def test_label_png_uses_the_default_design_a_slug_or_an_inline_design(signed_in):

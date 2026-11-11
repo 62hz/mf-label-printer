@@ -13,7 +13,8 @@ from . import designs
 from .render import render
 
 DPI = 203.2  # 8 dots per mm, so a 50 x 30 mm label is exactly a 50 x 30 mm PDF page
-MAX_SHEET_ROWS = 2000                 # data rows (under the header) read from an uploaded sheet
+MAX_SHEET_ROWS = 2000                 # non-empty data rows (under the header) accepted from an uploaded sheet
+MAX_RAW_ROWS = 20000                  # rows read from a sheet, blank or not
 MAX_UNPACKED = 100 * 1024 * 1024      # bytes an uploaded xlsx may expand to
 XLSX_HEADER = ["Product Type", "Artist", "Title", "Category", "Year", "SKU", "Barcode", "Price"]
 
@@ -103,28 +104,58 @@ def _check_zip(data: bytes) -> None:
         raise ValueError("Excel file is too large when unpacked.")
 
 
-def _check_row_count(rows: list) -> None:
-    """`rows` is the header plus at most MAX_SHEET_ROWS + 1 data rows, so one extra row means over the cap."""
-    if len(rows) - 1 > MAX_SHEET_ROWS:
-        raise ValueError(f"The sheet has more than {MAX_SHEET_ROWS} rows. Split it.")
+class _TooManyRows(ValueError):
+    pass
+
+
+def _blank(row) -> bool:
+    """A row with no cell holding anything but nothing or spaces."""
+    return all(c is None or (isinstance(c, str) and not c.strip()) for c in row)
+
+
+def _sheet_rows(raw):
+    """(header, non-empty data rows) from a row iterator, or None when the header has no SKU column.
+
+    Real Templater sheets carry thousands of formatted blank rows, so only non-empty rows count towards
+    MAX_SHEET_ROWS. The work is still bounded: at most MAX_RAW_ROWS rows are read, blank or not, and
+    reading stops as soon as the cap is passed."""
+    rows = iter(raw)
+    header = next(rows, None)
+    if header is None or "sku" not in [_norm(h) for h in header]:
+        return None
+    data = []
+    for row in itertools.islice(rows, MAX_RAW_ROWS - 1):
+        if not _blank(row):
+            data.append(row)
+            if len(data) > MAX_SHEET_ROWS:
+                raise _TooManyRows(f"The sheet has more than {MAX_SHEET_ROWS} rows. Split it.")
+    return list(header), data
 
 
 def read_sheet(data: bytes, filename: str) -> tuple[list[Label], str]:
     """Templater-style xlsx or csv -> (labels, sheet name). For xlsx the first sheet whose header has SKU is used."""
     if filename.lower().endswith(".csv"):
-        rows = list(itertools.islice(csv.reader(io.StringIO(data.decode("utf-8-sig"))), MAX_SHEET_ROWS + 2))
-        if not rows or "sku" not in [_norm(h) for h in rows[0]]:
+        try:
+            found = _sheet_rows(csv.reader(io.StringIO(data.decode("utf-8-sig"))))
+        except csv.Error:
+            raise ValueError("Could not read the CSV file.") from None
+        if found is None:
             raise ValueError("CSV needs a header row with a SKU column")
-        _check_row_count(rows)
-        return _rows_to_labels(rows[0], rows[1:]), "csv"
+        return _rows_to_labels(*found), "csv"
     _check_zip(data)
     try:
         wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     except (InvalidFileException, zipfile.BadZipFile, KeyError):
         raise ValueError("Not an Excel file.") from None
-    for ws in wb.worksheets:
-        rows = list(itertools.islice(ws.iter_rows(values_only=True), MAX_SHEET_ROWS + 2))  # lazy: never reads the whole sheet
-        if rows and "sku" in [_norm(h) for h in rows[0]]:
-            _check_row_count(rows)
-            return _rows_to_labels(list(rows[0]), rows[1:]), ws.title
+    except Exception:
+        raise ValueError("Could not read the Excel file.") from None
+    try:
+        for ws in wb.worksheets:
+            found = _sheet_rows(ws.iter_rows(values_only=True))  # lazy: never reads the whole sheet
+            if found is not None:
+                return _rows_to_labels(*found), ws.title
+    except _TooManyRows:
+        raise
+    except Exception:  # a damaged part inside an otherwise valid zip
+        raise ValueError("Could not read the Excel file.") from None
     raise ValueError("No sheet with a SKU column found")

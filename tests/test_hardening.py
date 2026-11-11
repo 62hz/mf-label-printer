@@ -2,6 +2,7 @@
 import asyncio
 import copy
 import io
+import sys
 import threading
 import time
 import zipfile
@@ -403,20 +404,21 @@ async def test_f8_refresh_if_stale_calls_dealpos_once_per_minute():
     now = [0.0]
     fake = FakeClient()
     cat = Catalog(fake, clock=lambda: now[0])
-    assert await cat.refresh_if_stale() == 3 and product_calls(fake) == 1
+    assert await cat.refresh_if_stale() == (3, True) and product_calls(fake) == 1
     now[0] = 10
-    assert await cat.refresh_if_stale() == 3 and product_calls(fake) == 1  # served from memory
+    assert await cat.refresh_if_stale() == (3, False) and product_calls(fake) == 1  # served from memory
     now[0] = 61
-    assert await cat.refresh_if_stale() == 3 and product_calls(fake) == 2
+    assert await cat.refresh_if_stale() == (3, True) and product_calls(fake) == 2
     now[0] = 62
-    assert await cat.refresh_if_stale(min_age=0) == 3 and product_calls(fake) == 3  # min_age is a parameter
+    assert await cat.refresh_if_stale(min_age=0) == (3, True) and product_calls(fake) == 3  # min_age is a parameter
 
 
-def test_f8_the_refresh_route_does_not_hammer_dealpos(tmp_path):
+def test_f8_the_refresh_route_does_not_hammer_dealpos_and_says_whether_it_read(tmp_path):
     fake = FakeClient()
     c = signed_in(tmp_path, fake)
-    for _ in range(3):
-        assert c.post("/api/refresh").json() == {"products": 3}
+    assert c.post("/api/refresh").json() == {"products": 3, "refreshed": True}
+    for _ in range(2):
+        assert c.post("/api/refresh").json() == {"products": 3, "refreshed": False}
     assert product_calls(fake) == 1
 
 
@@ -432,3 +434,181 @@ def test_f10_login_cookie_is_secure_on_a_public_host_and_not_on_a_local_one(tmp_
     for host in ("127.0.0.1:8797", "localhost:8797", "[::1]:8797"):
         r = c.post("/login", data={"password": PASSWORD}, headers={"Host": host})
         assert r.status_code == 303 and "secure" not in r.headers["set-cookie"].lower(), host
+
+
+# ================================================================ Round two
+
+# ---------------------------------------------------------------- R1 the label must be an object
+
+@pytest.mark.parametrize("label", ["x", [1, 2], 5, None, True])
+def test_r1_a_label_that_is_not_an_object_is_a_400_not_a_500(tmp_path, label):
+    r = signed_in(tmp_path).post("/api/label.png", json={"label": label})
+    assert r.status_code == 400 and r.json() == {"error": "Expected a label object."}
+
+
+def test_r1_a_missing_label_still_gives_the_empty_sku_error(tmp_path):
+    r = signed_in(tmp_path).post("/api/label.png", json={})
+    assert r.status_code == 400 and "empty" in r.json()["error"]
+
+
+# ---------------------------------------------------------------- R2 unreadable sheets are a 400, never a 500
+
+def rewritten_xlsx(replace_name, new_body):
+    """A real workbook with one part replaced."""
+    src = zipfile.ZipFile(io.BytesIO(sheet_xlsx(3)))
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+        for info in src.infolist():
+            zf.writestr(info.filename, new_body if info.filename == replace_name else src.read(info.filename))
+    return out.getvalue()
+
+
+def test_r2_a_csv_that_the_csv_reader_rejects_is_a_value_error():
+    huge_field = b"SKU,Artist\nS1," + b"x" * 200000 + b"\n"  # over the csv module's 131072-character field limit
+    with pytest.raises(ValueError, match="Could not read the CSV file.") as exc:
+        outputs.read_sheet(huge_field, "x.csv")
+    assert type(exc.value) is ValueError
+
+
+def test_r2_a_workbook_with_a_broken_sheet_is_a_value_error():
+    broken = rewritten_xlsx("xl/worksheets/sheet1.xml", b'<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"')
+    with pytest.raises(ValueError, match="Could not read the Excel file."):
+        outputs.read_sheet(broken, "x.xlsx")
+
+
+def test_r2_a_workbook_with_a_broken_workbook_part_is_a_value_error():
+    broken = rewritten_xlsx("xl/workbook.xml", b"<workbook><sheets>")
+    with pytest.raises(ValueError, match="Could not read the Excel file."):
+        outputs.read_sheet(broken, "x.xlsx")
+
+
+def test_r2_the_specific_messages_are_kept():
+    with pytest.raises(ValueError, match="Not an Excel file."):
+        outputs.read_sheet(b"plain text", "x.xlsx")
+    with pytest.raises(ValueError, match="CSV needs a header row"):
+        outputs.read_sheet(b"a,b\n1,2\n", "x.csv")
+    with pytest.raises(ValueError, match="No sheet with a SKU column found"):
+        wb = openpyxl.Workbook()
+        wb.active.append(["a", "b"])
+        buf = io.BytesIO()
+        wb.save(buf)
+        outputs.read_sheet(buf.getvalue(), "x.xlsx")
+
+
+def test_r2_the_upload_route_gives_400_with_the_message(tmp_path):
+    c = signed_in(tmp_path)
+    r = post_file(c, "x.csv", b"SKU,Artist\nS1," + b"x" * 200000 + b"\n")
+    assert r.status_code == 400 and r.json() == {"error": "Could not read the CSV file."}
+    r = post_file(c, "x.xlsx", rewritten_xlsx("xl/worksheets/sheet1.xml", b"<worksheet><sheetData><row"))
+    assert r.status_code == 400 and r.json() == {"error": "Could not read the Excel file."}
+
+
+# ---------------------------------------------------------------- R3 at most 500 distinct codes per resolve
+
+def codes(n):
+    return " ".join(f"CODE{k:04d}" for k in range(n))
+
+
+def test_r3_resolve_refuses_501_distinct_codes_before_calling_dealpos(tmp_path):
+    fake = FakeClient()
+    c = signed_in(tmp_path, fake)
+    r = c.post("/api/resolve", json={"text": codes(501)})
+    assert r.status_code == 400 and r.json() == {"error": "Too many codes (limit 500)."}
+    assert fake.calls == []
+    assert c.post("/api/resolve", json={"text": codes(500)}).status_code == 200
+
+
+def test_r3_repeats_in_any_case_and_any_separator_count_once(tmp_path):
+    c = signed_in(tmp_path)
+    repeats = "A1 a1,A1;a1\n" * 300
+    assert c.post("/api/resolve", json={"text": repeats + codes(498)}).status_code == 200  # 499 distinct
+    assert c.post("/api/resolve", json={"text": repeats + codes(500)}).status_code == 400  # 501 distinct
+    assert c.post("/api/resolve", json={"text": ",".join(f"c{k}" for k in range(501))}).status_code == 400
+
+
+# ---------------------------------------------------------------- R4 the row cap counts non-empty rows only
+
+def sheet_with_blank_rows(filled, blank):
+    """Header, `filled` rows with data, then `blank` rows that are formatted but empty (as in real Templater sheets)."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["SKU", "Artist", "Title"])
+    for n in range(filled):
+        ws.append([f"SKU{n:05d}", "Artist", "Title"])
+    for n in range(blank):
+        for col in (1, 2, 3):
+            ws.cell(row=filled + 2 + n, column=col).number_format = "@"
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_r4_1500_filled_rows_then_5000_formatted_blank_rows_import_fine(tmp_path):
+    r = post_file(signed_in(tmp_path), "t.xlsx", sheet_with_blank_rows(1500, 5000))
+    assert r.status_code == 200 and len(r.json()["labels"]) == 1500
+
+
+def test_r4_blank_rows_do_not_count_but_2001_filled_rows_still_fail():
+    assert len(outputs.read_sheet(sheet_with_blank_rows(2000, 3000), "t.xlsx")[0]) == 2000
+    with pytest.raises(ValueError, match="more than 2000 rows"):
+        outputs.read_sheet(sheet_with_blank_rows(2001, 3000), "t.xlsx")
+
+
+def test_r4_csv_blank_and_whitespace_only_rows_do_not_count():
+    data = ("SKU,Artist\nS1,A\n" + "\n" * 3000 + " , \n" * 3000 + "S2,B\n").encode()
+    labels, _ = outputs.read_sheet(data, "t.csv")
+    assert [l.sku for l in labels] == ["S1", "S2"]
+    filled = ("SKU,Artist\n" + "".join(f"S{k},A\n\n" for k in range(2001))).encode()  # a blank line after every row
+    with pytest.raises(ValueError, match="more than 2000 rows"):
+        outputs.read_sheet(filled, "t.csv")
+
+
+def test_r4_reading_stops_after_20000_raw_rows(monkeypatch):
+    consumed = [0]
+
+    def endless_blank_rows(_file):
+        yield ["SKU"]
+        while True:
+            consumed[0] += 1
+            yield [""]
+
+    monkeypatch.setattr(outputs.csv, "reader", endless_blank_rows)
+    labels, name = outputs.read_sheet(b"x", "x.csv")
+    assert labels == [] and name == "csv"
+    assert outputs.MAX_RAW_ROWS == 20000 and consumed[0] <= outputs.MAX_RAW_ROWS
+
+
+# ---------------------------------------------------------------- R5 main(): no proxy headers, 12-character password
+
+def run_main(monkeypatch, tmp_path, password, seen):
+    monkeypatch.setattr(server, "read_only_client", lambda: FakeClient())
+    monkeypatch.setattr(server, "ROOT", tmp_path)  # the session key goes to a temp folder, not data/
+    monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: seen.update(app=app, **kwargs))
+    monkeypatch.setattr(sys, "argv", ["labelprinter.server", "--port", "8797"])
+    if password is None:
+        monkeypatch.delenv("LABELPRINTER_PASSWORD", raising=False)
+    else:
+        monkeypatch.setenv("LABELPRINTER_PASSWORD", password)
+    server.main()
+
+
+def test_r5_main_starts_with_a_12_character_password_and_trusts_no_forwarded_header(monkeypatch, tmp_path):
+    seen = {}
+    run_main(monkeypatch, tmp_path, "x" * 12, seen)
+    assert seen["proxy_headers"] is False and seen["host"] == "127.0.0.1" and seen["port"] == 8797
+    assert callable(seen["app"])
+
+
+@pytest.mark.parametrize("password", ["x" * 11, "short", "", None])
+def test_r5_main_exits_without_starting_when_the_password_is_under_12_characters(monkeypatch, tmp_path, password):
+    seen = {}
+    with pytest.raises(SystemExit) as exc:
+        run_main(monkeypatch, tmp_path, password, seen)
+    assert "12" in str(exc.value) and seen == {}
+
+
+# ---------------------------------------------------------------- R6 the refresh button says what happened
+
+def test_r6_the_refresh_button_tells_the_two_cases_apart():
+    js = (server.STATIC / "app.js").read_text(encoding="utf-8")
+    assert "Catalog refreshed." in js and "Catalog was read less than a minute ago." in js and ".refreshed" in js

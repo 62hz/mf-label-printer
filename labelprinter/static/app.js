@@ -299,7 +299,7 @@ $("xlsx").addEventListener("click", () => download("/api/labels.xlsx", "mf-label
 $("testPdf").addEventListener("click", () => downloadGet("/api/test.pdf", "mf-test-labels.pdf"));
 $("refresh").addEventListener("click", async () => {
   note("Reading DealPOS…");
-  try { await postJson("/api/refresh", {}); await loadStatus(); note("Catalog refreshed."); } catch (e) { note(e.message, true); }
+  try { const r = await (await postJson("/api/refresh", {})).json(); await loadStatus(); note(r.refreshed ? "Catalog refreshed." : "Catalog was read less than a minute ago."); } catch (e) { note(e.message, true); }
 });
 if (UsbPrinter.supported()) {
   $("usb").hidden = false; $("usbTest").hidden = false;
