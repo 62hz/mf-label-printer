@@ -3,11 +3,13 @@ import hashlib
 import hmac
 import os
 import time
+from collections import deque
 from pathlib import Path
 
 COOKIE = "lp_session"
 EXPIRY_SECONDS = 7 * 24 * 3600
-MAX_FAILURES = 10
+MAX_FAILURES = 10         # per client
+MAX_GLOBAL_FAILURES = 40  # all clients together
 FAILURE_WINDOW = 600  # seconds
 
 
@@ -46,20 +48,34 @@ def password_ok(given: str, expected: str) -> bool:
 
 
 class Throttle:
-    """At most MAX_FAILURES wrong passwords per client in FAILURE_WINDOW seconds."""
+    """At most MAX_FAILURES wrong passwords per client, and MAX_GLOBAL_FAILURES from everyone together,
+    in FAILURE_WINDOW seconds. The global cap means rotating client addresses does not help."""
 
     def __init__(self, clock=time.monotonic):
         self._clock = clock
         self._failures: dict[str, list[float]] = {}
+        self._all: deque[float] = deque()
 
     def _recent(self, who: str) -> list[float]:
         now = self._clock()
         kept = [t for t in self._failures.get(who, []) if now - t < FAILURE_WINDOW]
-        self._failures[who] = kept
+        if kept:
+            self._failures[who] = kept
+        else:
+            self._failures.pop(who, None)  # no key for a client with nothing recent
         return kept
 
+    def _recent_global(self) -> int:
+        now = self._clock()
+        while self._all and now - self._all[0] >= FAILURE_WINDOW:
+            self._all.popleft()
+        return len(self._all)
+
     def blocked(self, who: str) -> bool:
-        return len(self._recent(who)) >= MAX_FAILURES
+        return len(self._recent(who)) >= MAX_FAILURES or self._recent_global() >= MAX_GLOBAL_FAILURES
 
     def record_failure(self, who: str) -> None:
-        self._recent(who).append(self._clock())
+        now = self._clock()
+        self._recent(who)  # prune this client's expired stamps first
+        self._failures.setdefault(who, []).append(now)
+        self._all.append(now)

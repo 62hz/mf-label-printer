@@ -69,16 +69,40 @@ def expand(content: str, label: Label) -> str:
 
 
 def fit(draw, text: str, name: str, max_px: float, avail: int, min_px: float):
-    """Shrink the font down to min_px, then cut the text and add '...' so it always fits `avail` dots."""
-    px = max_px
-    while px > min_px and draw.textlength(text, font=font(name, px)) > avail:
-        px -= 0.5
-    f = font(name, px)
-    if draw.textlength(text, font=f) > avail:
-        while text and draw.textlength(text + "...", font=f) > avail:
-            text = text[:-1]
-        text = text.rstrip() + "..."
-    return text, f
+    """Shrink the font down to min_px, then cut the text and add '...' so it always fits `avail` dots.
+
+    Candidate sizes are max_px, max_px - 0.5, ... clamped at min_px. Both searches are binary
+    (text width only grows with size and with length), so a very long text costs a handful of
+    measurements, not thousands."""
+    floor_px = min(min_px, max_px)
+    steps = max(0, math.ceil((max_px - floor_px) / 0.5))  # candidate i is max_px - i * 0.5
+
+    def size(i: int) -> float:
+        return max(floor_px, max_px - i * 0.5)
+
+    def width(i: int) -> float:
+        return draw.textlength(text, font=font(name, size(i)))
+
+    if width(0) <= avail:
+        return text, font(name, size(0))
+    if width(steps) <= avail:
+        lo, hi = 1, steps  # the smallest candidate that fits is in lo..hi, and hi fits
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if width(mid) <= avail:
+                hi = mid
+            else:
+                lo = mid + 1
+        return text, font(name, size(hi))
+    f = font(name, size(steps))
+    lo, hi = 0, len(text)  # the longest prefix whose width plus '...' fits is lo..hi
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if draw.textlength(text[:mid] + "...", font=f) <= avail:
+            lo = mid
+        else:
+            hi = mid - 1
+    return text[:lo].rstrip() + "...", f
 
 
 def bars(data: str) -> str:

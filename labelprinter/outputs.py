@@ -1,15 +1,20 @@
 """PDF, Excel and sheet-upload formats."""
 import csv
 import io
+import itertools
 import re
+import zipfile
 
 import openpyxl
+from openpyxl.utils.exceptions import InvalidFileException
 
 from .model import MAX_COPIES, Label, format_chip, parse_price, price_text
 from . import designs
 from .render import render
 
 DPI = 203.2  # 8 dots per mm, so a 50 x 30 mm label is exactly a 50 x 30 mm PDF page
+MAX_SHEET_ROWS = 2000                 # data rows (under the header) read from an uploaded sheet
+MAX_UNPACKED = 100 * 1024 * 1024      # bytes an uploaded xlsx may expand to
 XLSX_HEADER = ["Product Type", "Artist", "Title", "Category", "Year", "SKU", "Barcode", "Price"]
 
 
@@ -87,16 +92,39 @@ def _rows_to_labels(header: list, rows) -> list[Label]:
     return labels
 
 
+def _check_zip(data: bytes) -> None:
+    """An xlsx is a zip. Refuse non-zips and zip bombs (a few KB that unpack to gigabytes) before openpyxl sees them."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            unpacked = sum(info.file_size for info in zf.infolist())
+    except zipfile.BadZipFile:
+        raise ValueError("Not an Excel file.") from None
+    if unpacked > MAX_UNPACKED:
+        raise ValueError("Excel file is too large when unpacked.")
+
+
+def _check_row_count(rows: list) -> None:
+    """`rows` is the header plus at most MAX_SHEET_ROWS + 1 data rows, so one extra row means over the cap."""
+    if len(rows) - 1 > MAX_SHEET_ROWS:
+        raise ValueError(f"The sheet has more than {MAX_SHEET_ROWS} rows. Split it.")
+
+
 def read_sheet(data: bytes, filename: str) -> tuple[list[Label], str]:
     """Templater-style xlsx or csv -> (labels, sheet name). For xlsx the first sheet whose header has SKU is used."""
     if filename.lower().endswith(".csv"):
-        rows = list(csv.reader(io.StringIO(data.decode("utf-8-sig"))))
+        rows = list(itertools.islice(csv.reader(io.StringIO(data.decode("utf-8-sig"))), MAX_SHEET_ROWS + 2))
         if not rows or "sku" not in [_norm(h) for h in rows[0]]:
             raise ValueError("CSV needs a header row with a SKU column")
+        _check_row_count(rows)
         return _rows_to_labels(rows[0], rows[1:]), "csv"
-    wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    _check_zip(data)
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    except (InvalidFileException, zipfile.BadZipFile, KeyError):
+        raise ValueError("Not an Excel file.") from None
     for ws in wb.worksheets:
-        rows = list(ws.iter_rows(values_only=True))
+        rows = list(itertools.islice(ws.iter_rows(values_only=True), MAX_SHEET_ROWS + 2))  # lazy: never reads the whole sheet
         if rows and "sku" in [_norm(h) for h in rows[0]]:
+            _check_row_count(rows)
             return _rows_to_labels(list(rows[0]), rows[1:]), ws.title
     raise ValueError("No sheet with a SKU column found")

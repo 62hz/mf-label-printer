@@ -5,6 +5,7 @@ Run (from the project folder):
 Binds 127.0.0.1; reach it from the store through Tailscale Funnel (see README).
 """
 import argparse
+import json
 import os
 import sys
 import time
@@ -12,6 +13,7 @@ from pathlib import Path
 
 from dealpos_mcp.client import DealPOSError
 from starlette.applications import Starlette
+from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from starlette.routing import Mount, Route
@@ -28,11 +30,30 @@ STATIC = Path(__file__).resolve().parent / "static"
 MAX_ROWS = 200       # label rows per request
 MAX_TOTAL = 500      # printed labels per request, copies included
 MAX_UPLOAD = 5 * 1024 * 1024
+MAX_JSON = 2 * 1024 * 1024
+MAX_LOGIN_BODY = 4096
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "testserver", "[::1]", "::1"}  # "::1": urlsplit drops the brackets
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 class BadRequest(Exception):
     pass
+
+
+async def json_body(request: Request) -> dict:
+    """The request body as a JSON object. Reads at most MAX_JSON bytes, so a huge body is refused as it arrives."""
+    body = bytearray()
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > MAX_JSON:
+            raise BadRequest("Request is too large.")
+    try:
+        payload = json.loads(bytes(body))
+    except RecursionError:  # absurdly deep nesting; other malformed JSON is a ValueError, handled as a 400 by `guarded`
+        raise BadRequest("Invalid JSON.") from None
+    if not isinstance(payload, dict):
+        raise BadRequest("Expected a JSON object.")
+    return payload
 
 
 def parse_labels(payload) -> list[Label]:
@@ -74,6 +95,10 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
                 if request.url.path.startswith("/api/"):
                     return JSONResponse({"error": "Not signed in."}, status_code=401)
                 return RedirectResponse("/login", status_code=303)
+            if request.url.path == "/api/sheet":  # refuse a big or unsized upload before the form is parsed
+                length = request.headers.get("content-length", "")
+                if not length.isdigit() or int(length) > MAX_UPLOAD + 65536:
+                    return JSONResponse({"error": "File is over 5 MB."}, status_code=413)
             try:
                 return await handler(request)
             except BadRequest as exc:
@@ -87,8 +112,9 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
         return wrapper
 
     def client_id(request: Request) -> str:
-        fwd = request.headers.get("x-forwarded-for", "")
-        return fwd.split(",")[0].strip() or (request.client.host if request.client else "?")
+        # Uvicorn puts the real address (resolved from the Tailscale proxy) in request.client.
+        # X-Forwarded-For is attacker-controlled, so it is never read.
+        return request.client.host if request.client else "?"
 
     async def login_page(request: Request):
         return FileResponse(STATIC / "login.html")
@@ -97,12 +123,19 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
         who = client_id(request)
         if throttle.blocked(who):
             return JSONResponse({"error": "Too many wrong passwords. Try again in 10 minutes."}, status_code=429)
+        # The page posts a small urlencoded form. Refuse anything else before the body is parsed (multipart spools to disk).
+        kind = request.headers.get("content-type", "").partition(";")[0].strip().lower()
+        if kind != "application/x-www-form-urlencoded":
+            return JSONResponse({"error": "Unsupported content type."}, status_code=415)
+        length = request.headers.get("content-length", "")
+        if not length.isdigit() or int(length) > MAX_LOGIN_BODY:
+            return JSONResponse({"error": "Request is too large."}, status_code=413)
         form = await request.form()
         if not auth.password_ok(str(form.get("password", "")), password):
             throttle.record_failure(who)
             return RedirectResponse("/login?bad=1", status_code=303)
         resp = RedirectResponse("/", status_code=303)
-        secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+        secure = request.url.hostname not in LOCAL_HOSTS  # any non-local host is reached over https (Tailscale Funnel)
         resp.set_cookie(auth.COOKIE, auth.make_token(session_key), max_age=auth.EXPIRY_SECONDS,
                         httponly=True, samesite="lax", secure=secure)
         return resp
@@ -123,11 +156,11 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
 
     @guarded
     async def refresh(request: Request):
-        return JSONResponse({"products": await catalog.refresh()})
+        return JSONResponse({"products": await catalog.refresh_if_stale()})
 
     @guarded
     async def resolve(request: Request):
-        text = str((await request.json()).get("text", ""))
+        text = str((await json_body(request)).get("text", ""))
         labels, missing = await catalog.resolve(text)
         return JSONResponse({"labels": [l.to_dict() for l in labels], "missing": missing})
 
@@ -138,7 +171,7 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
 
     @guarded
     async def enrich(request: Request):
-        sku = str((await request.json()).get("sku", "")).strip()
+        sku = str((await json_body(request)).get("sku", "")).strip()
         if not sku:
             raise BadRequest("No SKU.")
         return JSONResponse(await catalog.enrich(sku))
@@ -157,36 +190,40 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
 
     @guarded
     async def label_png(request: Request):
-        payload = await request.json()
+        payload = await json_body(request)
         label, design = Label.from_dict(payload.get("label", {})), design_from(payload)
-        return Response(png_bytes(label, design), media_type="image/png",
-                        headers={"X-Label-Notes": " | ".join(notes(label, design))})
+        png = await run_in_threadpool(png_bytes, label, design)
+        warnings = await run_in_threadpool(notes, label, design)
+        return Response(png, media_type="image/png", headers={"X-Label-Notes": " | ".join(warnings)})
 
     @guarded
     async def labels_pdf(request: Request):
-        payload = await request.json()
-        data = outputs.pdf_bytes(parse_labels(payload), design_from(payload))
+        payload = await json_body(request)
+        data = await run_in_threadpool(outputs.pdf_bytes, parse_labels(payload), design_from(payload))
         return Response(data, media_type="application/pdf",
                         headers={"Content-Disposition": 'attachment; filename="mf-labels.pdf"'})
 
     @guarded
     async def labels_xlsx(request: Request):
-        data = outputs.xlsx_bytes(parse_labels(await request.json()))
+        data = outputs.xlsx_bytes(parse_labels(await json_body(request)))
         return Response(data, media_type=XLSX, headers={"Content-Disposition": 'attachment; filename="mf-labels.xlsx"'})
 
     @guarded
     async def labels_tspl(request: Request):
-        payload = await request.json()
-        return Response(tspl.job(parse_labels(payload), design_from(payload)), media_type="application/octet-stream")
+        payload = await json_body(request)
+        data = await run_in_threadpool(tspl.job, parse_labels(payload), design_from(payload))
+        return Response(data, media_type="application/octet-stream")
 
     @guarded
     async def check_tspl(request: Request):
         design = store.get(DEFAULT_SLUG)
-        return Response(tspl.check_job(design["gap_mm"], design["direction"]), media_type="application/octet-stream")
+        data = await run_in_threadpool(tspl.check_job, design["gap_mm"], design["direction"])
+        return Response(data, media_type="application/octet-stream")
 
     @guarded
     async def check_pdf(request: Request):
-        return Response(outputs.pdf_from_images(tspl.check_images()), media_type="application/pdf",
+        data = await run_in_threadpool(lambda: outputs.pdf_from_images(tspl.check_images()))
+        return Response(data, media_type="application/pdf",
                         headers={"Content-Disposition": 'attachment; filename="mf-test-labels.pdf"'})
 
     @guarded
@@ -204,7 +241,7 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
     @guarded
     async def design_save(request: Request):
         try:
-            return JSONResponse({"slug": store.save(await request.json())})
+            return JSONResponse({"slug": store.save(await json_body(request))})
         except ValueError as exc:
             raise BadRequest(str(exc)) from None
 

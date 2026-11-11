@@ -15,6 +15,7 @@ FONTS = ("arial", "calibri", "times", "verdana", "tahoma", "courier")
 TYPES = ("text", "barcode", "rect", "image")
 MAX_ELEMENTS = 40
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
+_SLUG_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,59}")  # everything slugify() makes; nothing that can name a path
 
 
 def _num(d: dict, key: str, lo: float, hi: float, where: str) -> float:
@@ -124,7 +125,9 @@ class DesignStore:
         return rows
 
     def get(self, slug: str) -> dict:
-        found = {**self._user(), **self._builtin()}.get(slug)
+        if not isinstance(slug, str) or not _SLUG_RE.fullmatch(slug):
+            raise KeyError(slug)
+        found ={**self._user(), **self._builtin()}.get(slug)
         if found is None:
             raise KeyError(slug)
         return found
@@ -140,6 +143,8 @@ class DesignStore:
         return slug
 
     def delete(self, slug: str) -> None:
+        if not isinstance(slug, str) or not _SLUG_RE.fullmatch(slug):
+            raise KeyError(slug)
         if slug in self._builtin():
             raise ValueError("Built-in designs cannot be deleted.")
         path = self.user_dir / f"{slug}.json"

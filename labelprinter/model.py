@@ -4,6 +4,7 @@ import re
 from dataclasses import asdict, dataclass
 
 MAX_COPIES = 200  # per row
+MAX_LEN = {"sku": 64, "artist": 200, "title": 200, "genre": 200, "format": 20, "year": 10}  # characters, after strip
 _FORMAT_WORDS = ("KASET", "CASSETTE", "CD", "LP", "VINYL", "PIRINGAN")
 _BR = re.compile(r"<\s*br\s*/?\s*>|</\s*(div|p)\s*>", re.I)
 _TAG = re.compile(r"<[^>]+>")
@@ -86,13 +87,16 @@ class Label:
             copies = int(float(d.get("copies", 1)))
         except (TypeError, ValueError):
             copies = 1
+        def text(key: str) -> str:
+            return str(d.get(key) or "").strip()[:MAX_LEN[key]]
+
         return cls(
-            sku=str(d.get("sku") or "").strip(),
-            artist=str(d.get("artist") or "").strip(),
-            title=str(d.get("title") or "").strip(),
-            format=str(d.get("format") or "").strip().upper(),
-            year=str(d.get("year") or "").strip(),
-            genre=str(d.get("genre") or "").strip(),
+            sku=text("sku"),
+            artist=text("artist"),
+            title=text("title"),
+            format=text("format").upper(),
+            year=text("year"),
+            genre=text("genre"),
             price=parse_price(d.get("price")),
             copies=max(1, min(MAX_COPIES, copies)),
         )
