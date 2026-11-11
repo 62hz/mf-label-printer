@@ -16,7 +16,7 @@ uv run python scripts/ui_smoke.py          # drives the page in Chromium, mocked
 Real (start from the Terminal panel, not as a background task of a Claude session):
 
 ```bash
-vault run dealpos mf-label-printer -- uv run python -m labelprinter.server --port 8794
+vault run dealpos mf-label-printer -- uv run python -m labelprinter.server --port 8797
 ```
 
 `vault` is found in PowerShell and the Terminal panel; Git Bash does not see it (use `vault.cmd` there).
@@ -25,10 +25,10 @@ Needs vault project `dealpos` (DealPOS keys, exists) and project `mf-label-print
 
 ## Reach it from the store
 
-Port 8794 is local only. The store tablet and phones use Tailscale Funnel on port 10000 (443 and 8443 belong to other apps; never touch them):
+Port 8797 is local only. The store tablet and phones use Tailscale Funnel on port 10000 (443 and 8443 belong to other apps; never touch them):
 
 ```bash
-tailscale funnel --bg --https=10000 http://127.0.0.1:8794    # on: needs Django's OK, it is public behind the password
+tailscale funnel --bg --https=10000 http://127.0.0.1:8797    # on: needs Django's OK, it is public behind the password
 tailscale funnel --https=10000 off                           # off
 ```
 
