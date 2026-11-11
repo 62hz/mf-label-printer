@@ -1,67 +1,137 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
 <title>MF Label Printer</title>
+<script>
+  /* Theme before first paint: dark unless the user chose light. Same key as app.js. */
+  (function () {
+    var theme = "dark";
+    try { if (localStorage.getItem("mf-theme") === "light") theme = "light"; } catch (e) { /* storage blocked: stay dark */ }
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+</script>
+<link rel="preload" href="/static/fonts/dmsans-latin.woff" as="font" type="font/woff" crossorigin>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/><path d="M12 10v4.5M12 17.5v.01"/></symbol>
+    <symbol id="i-error" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5v.01"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M6 14.5l6-6 6 6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9.5l6 6 6-6"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  </defs>
+</svg>
+<a class="skip" href="#main">Skip to the labels</a>
+
 <header class="top">
-  <h1>MF Label Printer</h1>
-  <p id="status" class="muted">Reading DealPOS…</p>
-  <button id="refresh" type="button" class="ghost">Refresh catalog</button>
-  <form method="post" action="/logout"><button type="submit" class="ghost">Sign out</button></form>
+  <div class="top-id">
+    <h1>MF Label Printer</h1>
+    <p id="status" class="muted" aria-live="polite">Reading DealPOS…</p>
+  </div>
+  <div class="top-tools">
+    <button id="refresh" type="button" class="ghost">Refresh catalog</button>
+    <button id="theme" type="button" class="ghost theme" aria-pressed="false"><span class="switch" aria-hidden="true"></span>Light theme</button>
+    <form method="post" action="/logout"><button type="submit" class="ghost">Sign out</button></form>
+  </div>
 </header>
 
-<main>
-  <section class="add" aria-label="Add labels">
-    <div>
+<main id="main">
+  <section class="add panel" aria-label="Add labels">
+    <div class="addblock">
       <label for="codes">SKUs or barcodes</label>
-      <textarea id="codes" rows="3" placeholder="AMEAMET158 ALEHEAC557 191404155127"></textarea>
-      <button id="addCodes" type="button">Add</button>
+      <textarea id="codes" rows="3" placeholder="AMEAMET158 ALEHEAC557 191404155127" aria-describedby="codesHint"></textarea>
+      <div class="addrow">
+        <button id="addCodes" type="button">Add</button>
+        <p id="codesHint" class="hint">Separate with spaces or new lines. Ctrl+Enter adds.</p>
+      </div>
     </div>
-    <div>
+    <div class="addblock">
       <label for="q">Search by name</label>
-      <input id="q" type="search" placeholder="artist or title" autocomplete="off">
+      <input id="q" type="search" placeholder="artist or title" autocomplete="off" aria-describedby="searchState">
+      <p id="searchState" class="hint" role="status" aria-live="polite">Type two or more letters, then pick a result.</p>
       <ul id="results" class="results"></ul>
     </div>
-    <div>
+    <div class="addblock">
       <label for="sheet">Templater sheet (.xlsx or .csv)</label>
-      <input id="sheet" type="file" accept=".xlsx,.csv">
+      <input id="sheet" type="file" accept=".xlsx,.csv" aria-describedby="sheetHint">
+      <p id="sheetHint" class="hint">The Barcode Templater sheet adds one row per line.</p>
     </div>
   </section>
 
-  <p id="msg" role="status" class="msg" hidden></p>
+  <div class="live" role="status" aria-live="polite">
+    <div id="msg" class="msg" hidden>
+      <svg class="icon msg-icon" aria-hidden="true"><use href="#i-info"/></svg>
+      <p class="msg-body"><span id="msgKind" class="sr-only"></span><span id="msgText"></span></p>
+      <button id="msgClose" type="button" class="ghost iconbtn" aria-label="Dismiss message"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+    </div>
+  </div>
 
   <section class="work">
-    <div class="tablewrap">
-      <table id="rows">
-        <thead><tr>
-          <th>SKU</th><th>Artist</th><th>Title</th><th>Format</th><th>Year</th><th>Genre</th><th>Price</th><th>Copies</th><th></th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
-      <p id="empty" class="muted">No labels yet. Add SKUs, search, or upload a sheet.</p>
+    <div class="tablepanel panel" id="tablePanel">
+      <div class="tabletools" id="tableTools">
+        <p id="total" class="total"></p>
+        <p class="legend"><span class="swatch" aria-hidden="true"></span>Amber: not in DealPOS, type it in or leave blank.</p>
+        <div id="progress" class="progress" hidden>
+          <label id="progressText" for="progressBar">Reading year and genre</label>
+          <progress id="progressBar" max="1" value="0"></progress>
+        </div>
+      </div>
+      <div class="tablewrap">
+        <table id="rows" role="table">
+          <caption class="sr-only">Labels to print</caption>
+          <thead role="rowgroup"><tr role="row">
+            <th role="columnheader" scope="col" class="c-sku">SKU</th><th role="columnheader" scope="col" class="c-artist">Artist</th><th role="columnheader" scope="col" class="c-title">Title</th><th role="columnheader" scope="col" class="c-format">Format</th><th role="columnheader" scope="col" class="c-year">Year</th><th role="columnheader" scope="col" class="c-genre">Genre</th><th role="columnheader" scope="col" class="c-price num">Price</th><th role="columnheader" scope="col" class="c-copies num">Copies</th><th role="columnheader" scope="col" class="c-rm"><span class="sr-only">Remove</span></th>
+          </tr></thead>
+          <tbody role="rowgroup"></tbody>
+        </table>
+        <div id="empty" class="teach">
+          <h2>No labels yet</h2>
+          <p>Add them any of these ways. The label shows up in the preview as soon as it is in the table.</p>
+          <ul class="ways">
+            <li><button type="button" class="way" data-way="codes"><strong>Paste SKUs from DealPOS</strong><span>Example: AMEAMET158 ALEHEAC557</span><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></button></li>
+            <li><button type="button" class="way" data-way="search"><strong>Search a title</strong><span>Example: american football</span><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></button></li>
+            <li><button type="button" class="way" data-way="sheet"><strong>Upload the Templater sheet</strong><span>An .xlsx or .csv, one row per label</span><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></button></li>
+          </ul>
+        </div>
+      </div>
     </div>
+
     <aside class="preview" aria-label="Preview">
+      <figure class="plate" id="plate" data-state="empty">
+        <div class="plate-frame" id="plateFrame">
+          <img id="previewImg" alt="Label preview" hidden>
+          <div id="skeleton" class="skeleton" aria-hidden="true" hidden></div>
+          <p id="previewNote" class="plate-note">Click or tap a row to preview it. The preview is the exact print.</p>
+        </div>
+        <figcaption id="previewCaption" hidden>50 x 30 mm, actual print size ratio</figcaption>
+      </figure>
+      <div id="designNotes" class="msg warn" hidden>
+        <svg class="icon msg-icon" aria-hidden="true"><use href="#i-alert"/></svg>
+        <p class="msg-body" id="designNotesText"></p>
+      </div>
       <div class="designbar">
         <label for="designSel">Design</label>
         <select id="designSel"></select>
-        <button id="designSave" type="button" class="ghost">Save</button>
-        <button id="designSaveAs" type="button" class="ghost">Save as…</button>
-        <button id="designDelete" type="button" class="ghost">Delete</button>
+        <div class="designbtns">
+          <button id="designSave" type="button" class="ghost">Save</button>
+          <button id="designSaveAs" type="button" class="ghost">Save as…</button>
+          <button id="designDelete" type="button" class="ghost">Delete</button>
+        </div>
       </div>
-      <p id="dirty" class="muted" hidden>Unsaved changes. Printing uses what you see.</p>
-      <img id="previewImg" alt="Label preview" hidden>
-      <p id="previewNote" class="muted">Click a row to preview it. The preview is the exact print.</p>
-      <p id="designNotes" class="msg error" hidden></p>
-      <p id="total" class="total"></p>
+      <p id="dirty" class="dirty" hidden>Unsaved changes. Printing uses what you see.</p>
     </aside>
   </section>
 
-  <details id="designer" class="designer">
-    <summary>Edit the design</summary>
+  <details id="designer" class="designer panel">
+    <summary><svg class="icon chev" aria-hidden="true"><use href="#i-chevron"/></svg>Edit the design</summary>
     <div class="dgrid">
       <div class="dleft">
         <h2>Elements</h2>
@@ -83,18 +153,21 @@
       <div class="dright">
         <h2 id="propsTitle">Element</h2>
         <div id="props" class="props"></div>
-        <p class="muted">Positions are in millimetres from the top-left corner. In text, use {artist} {title} {format} {year} {genre} {price} {sku}.</p>
+        <p class="hint">Positions are in millimetres from the top-left corner. In text, use {artist} {title} {format} {year} {genre} {price} {sku}.</p>
       </div>
     </div>
   </details>
 </main>
 
 <footer class="actions">
-  <button id="pdf" type="button">Download PDF</button>
-  <button id="xlsx" type="button" class="ghost">Download Excel</button>
-  <button id="testPdf" type="button" class="ghost">Test labels (PDF)</button>
-  <button id="usb" type="button" class="ghost" hidden>Print over USB</button>
-  <button id="usbTest" type="button" class="ghost" hidden>USB test labels</button>
+  <div class="actions-btns">
+    <button id="pdf" type="button" aria-describedby="actionHint">Download PDF</button>
+    <button id="xlsx" type="button" class="ghost" aria-describedby="actionHint">Download Excel</button>
+    <button id="testPdf" type="button" class="ghost" title="An orientation label and a barcode scan test label, as a PDF">Test labels (PDF)</button>
+    <button id="usb" type="button" class="ghost" hidden aria-describedby="actionHint" title="Prints straight to the label printer over USB. The first press prints 1 label to check size and direction.">Print over USB</button>
+    <button id="usbTest" type="button" class="ghost" hidden title="Prints an orientation label and a barcode scan test label">USB test labels</button>
+  </div>
+  <p id="actionHint" class="hint">Add a label to turn on the downloads and USB print.</p>
 </footer>
 
 <script src="/static/usb.js"></script>

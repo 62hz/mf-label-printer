@@ -11,7 +11,11 @@ Check without DealPOS or printer (fake data, throwaway designs):
 ```bash
 uv run python scripts/dev_server.py        # http://127.0.0.1:8795  password: devpassword
 uv run python scripts/ui_smoke.py          # drives the page in Chromium, mocked USB printer
+uv run python scripts/ui_contrast.py       # WCAG contrast of the page in dark and light, exits 1 on a failure
+uv run python scripts/ui_shots.py          # screenshots at 1280 / 768 / 390 px, both themes, into samples/ui/
 ```
+
+The page is dark by default; the "Light theme" switch in the header changes it and the browser remembers the choice (`mf-theme` in localStorage).
 
 Real (start from the Terminal panel, not as a background task of a Claude session):
 

@@ -3,8 +3,8 @@
 // Uses globals from app.js: $, api, postJson, note, design (working design), schedulePreview.
 
 const PROPS = {
-  text: [["content", "text"], ["font", "fonts"], ["size_pt", "num"], ["min_size_pt", "num"], ["bold", "bool"], ["italic", "bool"],
-         ["reverse", "bool"], ["align", ["left", "center", "right"]], ["valign", ["top", "middle"]]],
+  text: [["content", "text"], ["size_pt", "num"], ["min_size_pt", "num"], ["font", "fonts"], ["align", ["left", "center", "right"]], ["valign", ["top", "middle"]],
+         ["bold", "bool"], ["italic", "bool"], ["reverse", "bool"]],
   barcode: [["content", "text"], ["mode", ["integer", "fit"]]],
   rect: [],
   image: [],
@@ -31,11 +31,22 @@ function markDirty() {
   schedulePreview();
 }
 
-function field(labelText, control) {
+let fieldSeq = 0;
+function field(labelText, control) {   // a label tied to its control (a select for the font picker); a checkbox sits beside its label
   const wrap = document.createElement("div");
   wrap.className = "prop";
   const label = document.createElement("label");
+  if (control.matches('input[type="checkbox"]')) {   // the whole label is the click target, at least 44 px tall on touch
+    const text = document.createElement("span");
+    text.textContent = labelText;
+    label.append(control, text);
+    wrap.classList.add("prop-check");
+    wrap.appendChild(label);
+    return wrap;
+  }
   label.textContent = labelText;
+  const target = control.matches("input, select, textarea") ? control : (control.querySelector("select") || control.querySelector("input"));
+  if (target) { target.id = target.id || "prop-" + (++fieldSeq); label.htmlFor = target.id; }
   wrap.append(label, control);
   return wrap;
 }
@@ -188,18 +199,28 @@ function renderElList() {
     const li = document.createElement("li");
     li.className = i === selEl ? "sel" : "";
     const vis = document.createElement("input");
-    vis.type = "checkbox"; vis.checked = el.visible !== false; vis.title = "Show";
+    vis.type = "checkbox"; vis.checked = el.visible !== false;
+    vis.setAttribute("aria-label", "Show " + el.id);
     vis.addEventListener("change", () => { el.visible = vis.checked; markDirty(); });
+    const check = document.createElement("label");   // the whole 44 px square toggles the checkbox
+    check.className = "check"; check.title = "Show";
+    check.appendChild(vis);
     const name = document.createElement("button");
     name.type = "button"; name.className = "ghost elname"; name.textContent = el.id + " · " + el.type;
+    if (i === selEl) name.setAttribute("aria-current", "true");
     name.addEventListener("click", () => { selEl = i; renderElList(); renderProps(); });
-    const up = document.createElement("button");
-    up.type = "button"; up.className = "ghost mini"; up.textContent = "↑"; up.title = "Draw earlier";
-    up.addEventListener("click", () => { if (i > 0) { [design.elements[i - 1], design.elements[i]] = [design.elements[i], design.elements[i - 1]]; selEl = i - 1; renderElList(); markDirty(); } });
-    const down = document.createElement("button");
-    down.type = "button"; down.className = "ghost mini"; down.textContent = "↓"; down.title = "Draw later";
-    down.addEventListener("click", () => { if (i < design.elements.length - 1) { [design.elements[i + 1], design.elements[i]] = [design.elements[i], design.elements[i + 1]]; selEl = i + 1; renderElList(); markDirty(); } });
-    li.append(vis, name, up, down);
+    const mover = (label, icon, to) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "ghost mini iconbtn"; b.title = label; b.setAttribute("aria-label", label + ": " + el.id);
+      b.appendChild(svgIcon(icon));
+      b.addEventListener("click", () => {
+        if (to < 0 || to >= design.elements.length) return;
+        [design.elements[to], design.elements[i]] = [design.elements[i], design.elements[to]];
+        selEl = to; renderElList(); markDirty();
+      });
+      return b;
+    };
+    li.append(check, name, mover("Draw earlier", "i-up", i - 1), mover("Draw later", "i-down", i + 1));
     list.appendChild(li);
   });
 }
@@ -212,7 +233,11 @@ function renderProps() {
   if (!el) return;
   const onChange = () => markDirty();
   for (const key of ["x", "y", "w", "h"]) box.appendChild(field(LABELS[key], control(el, key, "num", onChange)));
-  for (const [key, kind] of PROPS[el.type]) box.appendChild(field(LABELS[key], control(el, key, kind, onChange)));
+  for (const [key, kind] of PROPS[el.type]) {
+    const wrap = field(LABELS[key], control(el, key, kind, onChange));
+    if (key === "content" || kind === "fonts") wrap.classList.add("wide");
+    box.appendChild(wrap);
+  }
 }
 
 function renderAll() {

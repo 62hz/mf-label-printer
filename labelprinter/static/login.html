@@ -1,21 +1,39 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MF Label Printer</title>
+<meta name="color-scheme" content="dark light">
+<title>Sign in - MF Label Printer</title>
+<script>
+  /* Theme before first paint: dark unless the user chose light on the main page. */
+  (function () {
+    var theme = "dark";
+    try { if (localStorage.getItem("mf-theme") === "light") theme = "light"; } catch (e) { /* storage blocked: stay dark */ }
+    document.documentElement.setAttribute("data-theme", theme);
+  })();
+</script>
+<link rel="preload" href="/static/fonts/dmsans-latin.woff" as="font" type="font/woff" crossorigin>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="login">
 <main>
   <h1>MF Label Printer</h1>
-  <form method="post" action="/login">
+  <form method="post" action="/login" class="panel loginform">
     <label for="password">Password</label>
-    <input id="password" name="password" type="password" autocomplete="current-password" autofocus required>
-    <p id="bad" class="error" hidden>Wrong password.</p>
+    <input id="password" name="password" type="password" autocomplete="current-password" autofocus required aria-describedby="bad">
+    <p id="bad" class="msg error" role="alert" hidden>
+      <svg class="icon msg-icon" aria-hidden="true"><use href="#i-error"/></svg>
+      <span class="msg-body">Wrong password. Try again.</span>
+    </p>
     <button type="submit">Sign in</button>
   </form>
 </main>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-error" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/></symbol>
+  </defs>
+</svg>
 <script>
   if (new URLSearchParams(location.search).get("bad")) document.getElementById("bad").hidden = false;
 </script>

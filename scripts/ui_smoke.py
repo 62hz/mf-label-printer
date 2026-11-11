@@ -70,11 +70,22 @@ def main():
             page.click("button[type=submit]")
             expect(page.locator("h1")).to_have_text("MF Label Printer")
             expect(page.locator("#status")).to_contain_text("3 products")
+            expect(page.locator("html")).to_have_attribute("data-theme", "dark")          # dark is the default
+            expect(page.locator("#empty")).to_be_visible()                               # the empty state teaches the three ways to add labels
+            expect(page.locator("#empty .way")).to_have_count(3)
+            expect(page.locator("#pdf")).to_be_disabled()                                # nothing to download yet, and the page says why
+            expect(page.locator("#actionHint")).to_be_visible()
 
             page.fill("#codes", "AMEAMET158 NOUPASC001 nope1")
             page.click("#addCodes")
             expect(page.locator("#rows tbody tr")).to_have_count(2)
             expect(page.locator("#msg")).to_contain_text("Not found: nope1")
+            expect(page.locator("#empty")).to_be_hidden()
+            expect(page.locator("#pdf")).to_be_enabled()
+            expect(page.locator("#rows tbody tr").nth(0)).to_have_attribute("aria-current", "true")   # the selected row is announced
+            expect(page.locator('#rows tbody tr td[data-col="year"]').first).to_have_attribute("data-label", "Year")  # stacked layout labels
+            page.click("#msgClose")                                                      # messages can be dismissed
+            expect(page.locator("#msg")).to_be_hidden()
             first = page.locator("#rows tbody tr").first
             expect(first.locator('input[data-field="year"]')).to_have_value("1999")      # filled from the Description
             expect(first.locator('input[data-field="genre"]')).to_have_value("Rock")
@@ -179,6 +190,19 @@ def main():
 
             body = page.inner_text("body")
             assert "undefined" not in body and "null" not in body.lower().replace("nullable", ""), body[:200]
+
+            # ---- theme: dark by default, light on request, remembered across a reload
+            page.click("#theme")
+            expect(page.locator("html")).to_have_attribute("data-theme", "light")
+            expect(page.locator("#theme")).to_have_attribute("aria-pressed", "true")
+            page.reload()
+            expect(page.locator("html")).to_have_attribute("data-theme", "light")
+            expect(page.locator("#theme")).to_have_attribute("aria-pressed", "true")
+            page.click("#theme")
+            expect(page.locator("html")).to_have_attribute("data-theme", "dark")
+            page.reload()
+            expect(page.locator("html")).to_have_attribute("data-theme", "dark")
+
             assert not errors, errors
             browser.close()
         print("UI SMOKE OK")
