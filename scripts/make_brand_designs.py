@@ -158,7 +158,7 @@ def price_card():
     def label_(eid, words, x, base):
         return text(eid, words, MED, 5, x + pad, 12, base, upper=True)
 
-    return design("MF Concept · Price card", [
+    return design("MF Price card", [
         {"id": "barcode", "type": "barcode", "content": "{sku}", "x": L, "y": T, "w": 5.5, "h": B - T, "mode": "integer", "rotate": 90},
         line("col", col, T, 0.25, B - T),
         line("r1", c, r1, R - c, 0.25), line("r2", c, r2, R - c, 0.25), line("r3", c, r3, R - c, 0.25),
