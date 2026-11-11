@@ -98,7 +98,8 @@ def validate(design: dict) -> dict:
                 min_size_pt=_num({"min_size_pt": el.get("min_size_pt", 4)}, "min_size_pt", 2, 60, where),
                 bold=bool(el.get("bold", False)), italic=bool(el.get("italic", False)), reverse=bool(el.get("reverse", False)),
                 align=_choice(el, "align", ("left", "center", "right"), "left", where),
-                valign=_choice(el, "valign", ("top", "middle"), "top", where))
+                valign=_choice(el, "valign", ("top", "middle", "baseline"), "top", where),
+                upper=bool(el.get("upper", False)))
         elif etype == "barcode":
             clean.update(content=_check_placeholders(str(el.get("content", "{sku}")), where),
                          mode=_choice(el, "mode", ("fit", "integer"), "fit", where))

@@ -118,6 +118,8 @@ def _text(draw, el: dict, label: Label, k: int = 1) -> None:
     text = expand(el["content"], label)
     if not text:
         return
+    if el["upper"]:
+        text = text.upper()
     x0, y0, x1, y1 = (v * k for v in _box(el))
     pad = 2 * k if el["reverse"] else 0
     path = fonts.resolve(el["font"], el["bold"], el["italic"])
@@ -128,6 +130,8 @@ def _text(draw, el: dict, label: Label, k: int = 1) -> None:
     h = {"left": "l", "center": "m", "right": "r"}[el["align"]]
     if el["valign"] == "middle":
         draw.text((ax, (y0 + y1) // 2), text, font=f, fill=255 if el["reverse"] else 0, anchor=h + "m")
+    elif el["valign"] == "baseline":  # the bottom edge of the box is the baseline, so a text that shrinks to fit stays on its line
+        draw.text((ax, y1), text, font=f, fill=255 if el["reverse"] else 0, anchor=h + "s")
     else:
         draw.text((ax, y0), text, font=f, fill=255 if el["reverse"] else 0, anchor=h + "a")
 
