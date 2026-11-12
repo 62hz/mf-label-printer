@@ -132,6 +132,7 @@ def validate(design: dict) -> dict:
             clean.update(content=_check_placeholders(str(el.get("content", "{sku}")), where),
                          mode=_choice(el, "mode", ("fit", "integer"), "fit", where), rotate=_rotate(el, where),
                          center=bool(el.get("center", False)),
+                         align=_choice(el, "align", ("left", "right"), "left", where),   # flat barcodes: flush left or flush right in the box
                          reserve=_num({"reserve": el.get("reserve", 0)}, "reserve", 0, 100, where))
         elif etype == "image":
             clean.update(src=_choice(el, "src", ("logo", "symbol", "screen-logo"), "logo", where),

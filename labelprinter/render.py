@@ -247,6 +247,25 @@ def _text(draw, el: dict, label: Label, k: int = 1, flow_y: int | None = None):
     return y1
 
 
+def _barcode_width(el: dict, width: int, n: int) -> int:
+    """The width the bars are spread over. A flat barcode that keeps `reserve` mm free at its right end (room for a logo)
+    gives that room up when keeping it would leave the bars thinner than 2 dots (or thinner than they would otherwise be)."""
+    if el["reserve"] and el["rotate"] == 0 and el["mode"] == "integer":
+        room = width - dots(el["reserve"])
+        if room >= n and room // n >= min(2, width // n):
+            return room
+    return width
+
+
+def _barcode_start(el: dict, x0: int, x1: int, room: int, length: int, center: bool) -> int:
+    """Where the first bar starts. Flush right in the box, so the room reserved for a logo is at its left end; but when the
+    reserve is given up (the bars need the whole width) they start at the left edge, where the logo would have stood.
+    Otherwise centred in the room the bars may use, or at the left."""
+    if el["align"] == "right" and el["rotate"] == 0:
+        return x0 if el["reserve"] and room == x1 - x0 else x1 - length
+    return x0 + (room - length) // 2 if center else x0
+
+
 def _barcode(draw, el: dict, label: Label, center: bool = False) -> int:
     """Draw the bars from the left of the box (or centred in it); return how many dots long the drawn barcode is."""
     data = expand(el["content"], label)
@@ -255,9 +274,9 @@ def _barcode(draw, el: dict, label: Label, center: bool = False) -> int:
     width, n = x1 - x0, len(bits)
     if width < n:
         raise ValueError(f"Barcode {data!r} needs at least {n / DPM:.1f} mm of width, the element is {el['w']} mm")
-    scale = (width // n) if el["mode"] == "integer" else width / n
-    if center:
-        x0 += (width - math.floor(n * scale + 0.5)) // 2
+    room = _barcode_width(el, width, n)
+    scale = (room // n) if el["mode"] == "integer" else room / n
+    x0 = _barcode_start(el, x0, x1, room, math.floor(n * scale + 0.5), center)
     i = 0
     while i < n:
         if bits[i] == "1":
@@ -366,7 +385,7 @@ def render(label: Label, design: dict) -> Image.Image:
         elif el["type"] == "barcode":
             x0, y0, x1, y1 = _box(el)
             length = _barcode(draw, el, label, center=el["center"])
-            x0 += (x1 - x0 - length) // 2 if el["center"] else 0
+            x0 = _barcode_start(el, x0, x1, _barcode_width(el, x1 - x0, len(bars(expand(el["content"], label)))), length, el["center"])
             taken.append((x0, y0, x0 + length, y1))
         elif el["type"] == "rect" and smooth:
             # on the text copy, so white text placed on a black box stays white (edges stay on whole dots: k-times coordinates)
@@ -413,6 +432,7 @@ def notes(label: Label, design: dict) -> list[str]:
         width = (y1 - y0) if el["rotate"] == 90 else (x1 - x0)  # the length the bars are spread along
         if width < n:
             continue  # render() reports this one as an error
+        width = _barcode_width(el, width, n)
         if el["mode"] == "integer":
             mod = width // n
             if mod == 1:

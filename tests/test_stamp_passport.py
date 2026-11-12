@@ -8,7 +8,7 @@ from PIL import Image
 from labelprinter import designs, render
 from labelprinter.model import Label
 
-PASSPORTS = ["mf-passport", "mf-passport-corner", "mf-passport-inline"]
+PASSPORTS = ["mf-passport", "mf-passport-corner", "mf-passport-inline", "mf-passport-row"]
 NEW = ["mf-stamp"] + PASSPORTS
 SAMPLES = [
     Label("NOUPASC001", "Nourished By Time", "The Passionate Ones", "CD", "2024", "Soul", 330000),
@@ -171,7 +171,7 @@ def test_the_passport_barcode_reads_when_tilted_8_degrees_either_way(slug, label
 
 
 @pytest.mark.parametrize("slug", PASSPORTS[1:])
-def test_the_three_passports_share_one_skeleton_only_the_symbol_moves(slug):
+def test_the_passports_share_one_skeleton_only_the_symbol_moves(slug):
     base, other = boxes("mf-passport"), boxes(slug)
     for key in ("barcode", "mrz1", "mrz2", "format", "year", "artist"):
         assert base[key]["y"] == other[key]["y"] and base[key]["x"] == other[key]["x"], key
@@ -201,3 +201,73 @@ def test_a_horizontal_barcode_can_be_centred_in_its_box():
     (l0, r0), (l1, r1) = span(left), span(mid)
     assert l0 == 20 and r0 > 40                 # drawn from the left edge, the room is on the right
     assert abs(l1 - r1) <= 1 and l1 > 20        # centred
+
+
+# --- MF Passport · symbol left: a 4.5 mm symbol, the barcode flush right, the genre flush right ---
+
+def ink_columns(img, y0, y1, x0=0, x1=400):
+    band = img.convert("L").crop((x0, y0, x1, y1))
+    cols = [x0 + x for x in range(band.width) if any(band.getpixel((x, y)) == 0 for y in range(band.height))]
+    return min(cols), max(cols)
+
+
+def without_symbol(design):
+    return dict(design, elements=[e for e in design["elements"] if e["id"] != "symbol"])
+
+
+def test_the_row_passport_puts_a_4_5_mm_symbol_left_and_the_barcode_flush_right():
+    d = load("mf-passport-row")
+    sym = boxes("mf-passport-row")["symbol"]
+    assert sym["w"] == 4.5 and sym["x"] == 2.5
+    bar = boxes("mf-passport-row")["barcode"]
+    top, bottom = round(bar["y"] * 8) + 1, round((bar["y"] + bar["h"]) * 8) - 1
+    full = render.render(SAMPLES[0], d)
+    bars_only = render.render(SAMPLES[0], without_symbol(d))
+    assert full.tobytes() != bars_only.tobytes()                       # the symbol is drawn
+    first, last = ink_columns(bars_only, top, bottom)
+    assert last == 379                                                  # flush with the right margin (and the price, and the MRZ)
+    assert first - round((sym["x"] + sym["w"]) * 8) >= 20               # 2.5 mm of quiet zone between the symbol and the first bar
+
+
+@pytest.mark.parametrize("sku", ["ORCHMANOEUV7", "ABCDEFGHIJKLM"])
+def test_a_barcode_too_long_for_the_symbol_flips_flush_left_and_the_symbol_gives_way(sku):
+    d = load("mf-passport-row")
+    label = Label(sku, "Miles Davis", "Kind Of Blue", "VINYL", "1959", "Jazz", 345000)
+    bar = boxes("mf-passport-row")["barcode"]
+    top, bottom = round(bar["y"] * 8) + 1, round((bar["y"] + bar["h"]) * 8) - 1
+    full = render.render(label, d)
+    assert full.tobytes() == render.render(label, without_symbol(d)).tobytes()   # the symbol is left out
+    assert ink_columns(full, top, bottom)[0] == 20                                # the bars start at the left margin
+    img = full.convert("L").resize((1600, 960), Image.NEAREST)
+    assert sku in [b.text for b in zxingcpp.read_barcodes(img)]
+
+
+def test_the_row_passport_keeps_the_symbol_for_ten_character_and_ean_skus_and_for_one_dot_barcodes():
+    d = load("mf-passport-row")
+    for sku in ("NOUPASC001", "4988031465987", "ABCDEFGHIJKLMNOP"):
+        label = Label(sku, "Miles Davis", "Kind Of Blue", "VINYL", "1959", "Jazz", 345000)
+        assert render.render(label, d).tobytes() != render.render(label, without_symbol(d)).tobytes(), sku
+
+
+def test_the_genre_is_flush_right_in_the_row_passport():
+    d = load("mf-passport-row")
+    first, last = ink_columns(render.render(SAMPLES[0], d), 96, 116, x0=150)    # the fields row, right of the year
+    assert last >= 377                                                          # ends at the right margin, like the price
+    assert next(e for e in d["elements"] if e["id"] == "genre")["align"] == "right"
+
+
+def test_barcode_align_is_left_or_right():
+    base = {"type": "barcode", "x": 2, "y": 2, "w": 40, "h": 5}
+    assert designs.validate(blank(dict(base, align="right")))["elements"][0]["align"] == "right"
+    assert designs.validate(blank(base))["elements"][0]["align"] == "left"
+    with pytest.raises(ValueError):
+        designs.validate(blank(dict(base, align="middle")))
+
+
+@pytest.mark.parametrize("sku, mod", [("NOUPASC001", 2), ("ORCHMANOEUV7", 2)])
+def test_reserving_room_never_costs_the_bars_their_second_dot(sku, mod):
+    """The reserve is given up as soon as keeping it would leave the bars thinner than 2 dots."""
+    bar = {"type": "barcode", "content": "{sku}", "x": 2.5, "y": 5, "w": 45, "h": 6, "mode": "integer", "reserve": 7.0}
+    img = render.render(Label(sku), blank(bar)).convert("L")
+    first, last = ink_columns(img, 41, 87)
+    assert (last + 1 - first) // len(render.bars(sku)) == mod

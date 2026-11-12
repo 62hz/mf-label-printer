@@ -187,11 +187,11 @@ def main():
             assert len(pymupdf.open(dl.value.path())) == 2
 
             page.reload()                                                                # saved designs survive a reload
-            expect(page.locator("#designSel option")).to_have_count(14)                  # thirteen built in + the saved one
+            expect(page.locator("#designSel option")).to_have_count(15)                  # fourteen built in + the saved one
             page.select_option("#designSel", "cd-shelf")
             expect(page.locator("#designDelete")).to_be_enabled()
             page.click("#designDelete")
-            expect(page.locator("#designSel option")).to_have_count(13)
+            expect(page.locator("#designSel option")).to_have_count(14)
             expect(page.locator("#designSel")).to_have_value("mf-concept-price-card")
 
             body = page.inner_text("body")
