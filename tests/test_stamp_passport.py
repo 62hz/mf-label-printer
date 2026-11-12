@@ -1,4 +1,4 @@
-"""The MF Stamp and MF Passport designs, and the building blocks they rely on (circle, stamp edge, machine-readable line)."""
+"""MF Passport · symbol left (the default), and the building blocks it relies on (machine-readable line, flat barcode align and reserve, circle, stamp edge)."""
 import json
 
 import pytest
@@ -8,8 +8,8 @@ from PIL import Image
 from labelprinter import designs, render
 from labelprinter.model import Label
 
-PASSPORTS = ["mf-passport", "mf-passport-corner", "mf-passport-inline", "mf-passport-row"]
-NEW = ["mf-stamp"] + PASSPORTS
+PASSPORTS = ["mf-passport-row"]
+NEW = PASSPORTS
 SAMPLES = [
     Label("NOUPASC001", "Nourished By Time", "The Passionate Ones", "CD", "2024", "Soul", 330000),
     Label("4988031465987", "Kikagaku Moyo", "Kumoyo Island", "CD", "2022", "Psychedelic Rock", 299000),
@@ -61,7 +61,7 @@ def test_mrz_is_capitals_digits_and_fill_cut_or_padded_to_the_width():
 
 def test_the_passport_machine_readable_lines_are_36_characters(monkeypatch):
     drawn = spy_text(monkeypatch)
-    render.render(SAMPLES[0], load("mf-passport"))
+    render.render(SAMPLES[0], load("mf-passport-row"))
     lines = [t for t in drawn if "<" in t]
     assert len(lines) == 2 and all(len(t) == 36 for t in lines)
     assert lines[0].startswith("R<MFXNOURISHED<BY<TIME<<THE<")
@@ -116,8 +116,8 @@ def test_new_element_options_are_validated(bad):
 
 
 def test_a_following_flow_text_never_starts_below_its_own_box(monkeypatch):
-    """The title under a two-line artist may not drop into the foot line: it stops at its own box bottom."""
-    d = designs.validate(load("mf-stamp"))
+    """The title under a two-line artist may not drop into the barcode: it stops at its own box bottom."""
+    d = designs.validate(load("mf-passport-row"))
     title = next(e for e in d["elements"] if e["id"] == "title")
     drawn = []
     real = render.ImageDraw.ImageDraw.text
@@ -125,13 +125,6 @@ def test_a_following_flow_text_never_starts_below_its_own_box(monkeypatch):
     render.render(Label("GODSPEED01", "Godspeed You! Black Emperor", "Lift Your Skinny Fists Like Antennas To Heaven", "VINYL", "2000", "Post-Rock", 785000), d)
     lowest = max(y for text, y in drawn if text.startswith(("Lift", "Antennas")))
     assert lowest <= (title["y"] + title["h"]) * render.DPM * render.SMOOTH + 1
-
-
-@pytest.mark.parametrize("label", SAMPLES, ids=lambda label: label.sku)
-def test_the_stamp_prints_the_whole_sku_even_a_16_character_one(label, monkeypatch):
-    drawn = spy_text(monkeypatch)
-    render.render(label, load("mf-stamp"))
-    assert label.sku in drawn
 
 
 # --- the Passport, round 5: no tiny labels, a tall barcode with air below it, and three places for the symbol ---
@@ -168,13 +161,6 @@ def test_the_passport_barcode_reads_when_tilted_8_degrees_either_way(slug, label
     for angle in (-8, 8):
         tilted = img.rotate(angle, resample=Image.BICUBIC, expand=True, fillcolor=255)
         assert label.sku in [b.text for b in zxingcpp.read_barcodes(tilted)], angle
-
-
-@pytest.mark.parametrize("slug", PASSPORTS[1:])
-def test_the_passports_share_one_skeleton_only_the_symbol_moves(slug):
-    base, other = boxes("mf-passport"), boxes(slug)
-    for key in ("barcode", "mrz1", "mrz2", "format", "year", "artist"):
-        assert base[key]["y"] == other[key]["y"] and base[key]["x"] == other[key]["x"], key
 
 
 @pytest.mark.parametrize("slug", PASSPORTS)

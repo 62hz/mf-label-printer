@@ -119,10 +119,11 @@ def main():
             # ---- designer: edit, see it in the preview request, save as, print with it, reload, delete
             expect(page.locator("#designSel")).to_have_value("mf-passport-row")   # the page opens on MF Passport, symbol left
             page.click("#designer summary")
-            page.select_option("#designSel", "mf-stamp")                                # the new element types open in the editor
-            page.locator("#elList li", has_text="perforation").locator("button.elname").click()
+            page.select_option("#addType", "perforation")                               # the stamp-edge and record elements can be added in the editor
+            page.click("#elAdd")
             expect(page.locator("#props")).to_contain_text("Notch spacing")
-            page.locator("#elList li", has_text="disc ·").first.locator("button.elname").click()
+            page.select_option("#addType", "ellipse")
+            page.click("#elAdd")
             expect(page.locator("#props")).to_contain_text("Grooves")
             page.select_option("#designSel", "mf-april")
             expect(page.locator("#designDelete")).to_be_disabled()                      # built-in designs cannot be deleted
@@ -187,11 +188,11 @@ def main():
             assert len(pymupdf.open(dl.value.path())) == 2
 
             page.reload()                                                                # saved designs survive a reload
-            expect(page.locator("#designSel option")).to_have_count(15)                  # fourteen built in + the saved one
+            expect(page.locator("#designSel option")).to_have_count(6)                  # five built in + the saved one
             page.select_option("#designSel", "cd-shelf")
             expect(page.locator("#designDelete")).to_be_enabled()
             page.click("#designDelete")
-            expect(page.locator("#designSel option")).to_have_count(14)
+            expect(page.locator("#designSel option")).to_have_count(5)
             expect(page.locator("#designSel")).to_have_value("mf-passport-row")
 
             body = page.inner_text("body")

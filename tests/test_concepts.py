@@ -1,4 +1,4 @@
-"""The MF Concept designs (Catalogue line, Price card, Format tile) and the turned barcode they rely on."""
+"""The MF Price card and the turned barcode it relies on."""
 import json
 
 import pytest
@@ -8,7 +8,7 @@ from PIL import Image
 from labelprinter import designs, render
 from labelprinter.model import Label
 
-CONCEPTS = ["mf-concept-catalogue-line", "mf-concept-price-card", "mf-concept-format-tile"]
+CONCEPTS = ["mf-concept-price-card"]
 SAMPLES = [
     Label("AMEAMET158", "American Football", "American Football (Deluxe Edition)", "CASSETTE", "1999", "Rock", 305000),
     Label("191404155127", "Charli XCX", "Brat", "VINYL", "2024", "Pop", 345000),
@@ -37,10 +37,13 @@ def test_nothing_prints_inside_the_2_5_mm_margin(slug, label):
 
 
 def test_white_text_on_a_black_box_survives_smooth_text():
-    """The Catalogue line ticket is a black box with white text on it: the text must show."""
-    img = render.render(SAMPLES[0], load("mf-concept-catalogue-line")).convert("L")
-    ticket = img.crop((231, 135, 379, 219))            # inside the ticket box
-    assert 0 < sum(1 for v in ticket.getdata() if v == 255) < ticket.width * ticket.height // 2
+    """A black box with white text on it: the text must show, with smooth text on."""
+    d = {"name": "t", "width_mm": 50, "height_mm": 30, "gap_mm": 2, "smooth_text": True, "elements": [
+        {"type": "rect", "x": 5, "y": 5, "w": 25, "h": 10},
+        {"type": "text", "content": "{artist}", "x": 6, "y": 6, "w": 23, "h": 8, "size_pt": 10, "reverse": True, "valign": "baseline"}]}
+    img = render.render(SAMPLES[0], d).convert("L")
+    box = img.crop((40, 40, 240, 120))
+    assert 0 < sum(1 for v in box.getdata() if v == 255) < box.width * box.height // 2
 
 
 def test_turned_barcode_runs_down_the_box():

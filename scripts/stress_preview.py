@@ -32,7 +32,7 @@ SCALE, PAD, TEXT_W = 2, 24, 520
 
 
 def main() -> int:
-    slug = sys.argv[1] if len(sys.argv) > 1 else "mf-concept-price-card"
+    slug = sys.argv[1] if len(sys.argv) > 1 else "mf-passport-row"
     out = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / "samples" / "stress" / f"{slug}.png"
     out.parent.mkdir(parents=True, exist_ok=True)
     design = json.loads((ROOT / "labelprinter" / "designs" / f"{slug}.json").read_text(encoding="utf-8"))

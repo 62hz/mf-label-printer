@@ -106,7 +106,7 @@ def test_notes_with_non_latin_text_still_make_a_valid_header(signed_in, monkeypa
 
 def test_designs_api_list_get_save_delete(signed_in):
     body = signed_in.get("/api/designs").json()
-    assert body["default"] == "mf-passport-row" and [d["slug"] for d in body["designs"]][:14] == ["mf-april", "mf-brand-barcode-foot", "mf-brand-ledger", "mf-brand-symbol-column", "mf-concept-catalogue-line", "mf-concept-format-tile", "mf-concept-price-card", "mf-large", "mf-passport-corner", "mf-passport-inline", "mf-passport-row", "mf-passport", "mf-scan-safe", "mf-stamp"]
+    assert body["default"] == "mf-passport-row" and [d["slug"] for d in body["designs"]][:5] == ["mf-april", "mf-concept-price-card", "mf-large", "mf-passport-row", "mf-scan-safe"]
     assert "fonts" not in body                                       # the font list has its own route: /api/fonts
     assert signed_in.get("/api/designs/mf-april").json()["width_mm"] == 50
     assert signed_in.get("/api/designs/nope").status_code == 404

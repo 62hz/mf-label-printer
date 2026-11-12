@@ -1,15 +1,17 @@
-"""Write the MF Brand label designs from one grid, so every position is derived, never typed by eye.
+"""Write the two MF label designs that are built from a grid, so every position is derived, never typed by eye.
 
   uv run python scripts/make_brand_designs.py
 
+  mf-passport-row     the default: MF Passport, symbol left (the symbol and a flush-right barcode on one row,
+                      two machine-readable lines in DM Mono at the foot)
+  mf-concept-price-card   the Price card: a closed ruled form, the barcode standing up the left edge
+
 The system (50 x 30 mm label, 8 dots per mm):
   margins     2.5 mm on all four sides: the live area is x 2.5-47.5, y 2.5-27.5
-  baselines   every line of text sits on a baseline in a 0.5 mm grid; text boxes are anchored on it
-              (valign "baseline"), so a line that shrinks to fit stays on its line
-  type scale  6 / 8 / 10 / 12 pt, DM Sans only: artist 12 SemiBold, title 8 Regular, price 10 Medium,
-              meta and SKU 6 pt (meta Medium, uppercase)
-  black       the barcode is the only large solid mass; no reverse chips; one 0.25 mm rule at most
-  mark        the symbol at 6 mm or nothing (the screen logo is 30 mm at minimum: 60 % of this label)
+  baselines   text boxes are anchored on a baseline (valign "baseline"), so a line that shrinks to fit stays on its line
+  type        DM Sans (Regular, Medium, SemiBold) and DM Mono for the machine-readable lines
+Older designs (Ledger, Barcode foot, Symbol column, Catalogue line, Format tile, Stamp, the other Passport placements)
+were removed on 2026-11-12; they are in git history (commit ad8aa1a and before).
 """
 import json
 import sys
@@ -22,7 +24,7 @@ PX_PER_PT = DPM * 25.4 / 72
 
 L, R, T, B = 2.5, 47.5, 2.5, 27.5     # live area
 W = R - L
-SEMI, MED, REG, LIGHT = "dm-sans-semibold", "dm-sans-medium", "dm-sans", "dm-sans-light"
+SEMI, MED, REG = "dm-sans-semibold", "dm-sans-medium", "dm-sans"
 SYMBOL_W, SYMBOL_H = 6.0, 6.66        # the symbol at its 6 mm minimum, in its own proportions
 MINI_W, MINI_H = 3.15, 3.5            # the small symbol in the Price card header corner (Django's call, below the guide's 6 mm)
 CAP = 0.7                             # DM Sans cap height in em
@@ -55,102 +57,12 @@ def barcode(x, y, w, h):
     return {"id": "barcode", "type": "barcode", "content": "{sku}", "x": x, "y": y, "w": w, "h": h, "mode": "integer"}
 
 
-def rule(y, x=L, w=W):
-    return {"id": "rule", "type": "rect", "x": x, "y": y, "w": w, "h": 0.25}
-
-
-def symbol(x, y):
-    return {"id": "symbol", "type": "image", "src": "symbol", "x": x, "y": y, "w": SYMBOL_W, "h": SYMBOL_H}
-
-
 def design(name, elements):
     return {"name": name, "width_mm": 50, "height_mm": 30, "gap_mm": 2, "direction": 1, "smooth_text": True, "elements": elements}
 
 
-META = 12.0   # baseline of the meta line: the gap above each line's caps is 1.8-1.9 mm all the way down
-SCAN_TOP, SCAN_H = 16.5, 7.5   # the barcode zone of the full-width layouts, 2.3 mm above the SKU line
-PRICE_ROW = 13.0               # when the price shares the meta line it drops one step, so its caps clear the title line
-PRICE_FOOT = 26.5              # a price on the last line sits 1 mm higher so the descender of the "p" stays inside the margin
-
-
-def artist(x=L, w=W):
-    return text("artist", "{artist}", SEMI, 12, x, w, 5.5, min_pt=6.5)
-
-
-def title(x=L, w=W):
-    return text("title", "{title}", REG, 8, x, w, 9.0, min_pt=5)
-
-
-def ledger():
-    """Type on top, a hairline, then the scan zone on the left and the money on the right."""
-    barcode_top = 16.5
-    price_baseline = round((barcode_top + cap_mm(10)) * 2) / 2
-    return design("MF Brand · Ledger", [
-        artist(), title(),
-        text("meta", "{format}  {year}  {genre}", MED, 6, L, W, META, min_pt=5, upper=True),
-        rule(14.25),
-        barcode(L, barcode_top, 24, 8.0),
-        text("price", "{price}", MED, 10, 28, R - 28, price_baseline, align="right", min_pt=7),
-        text("sku", "{sku}", REG, 6, L, 24, B),
-        symbol(R - SYMBOL_W, B - SYMBOL_H),
-    ])
-
-
-def barcode_foot():
-    """No mark. The price rides the meta line, so the barcode gets the full width and real height."""
-    return design("MF Brand · Barcode foot", [
-        artist(), title(),
-        text("meta", "{format}  {year}", MED, 6, L, 22, PRICE_ROW, min_pt=5, upper=True),
-        text("price", "{price}", MED, 10, 24, R - 24, PRICE_ROW, align="right", min_pt=7),
-        barcode(L, SCAN_TOP, W, SCAN_H),
-        text("sku", "{sku}", REG, 6, L, 22, B),
-        text("genre", "{genre}", MED, 6, 25.5, R - 25.5, B, align="right", min_pt=5, upper=True),
-    ])
-
-
-def symbol_column():
-    """The symbol sets the text axis: the artist, title and meta line hang from its right edge."""
-    x = L + SYMBOL_W + 2.0
-    return design("MF Brand · Symbol column", [
-        symbol(L, 9.0 - SYMBOL_H),
-        artist(x, R - x), title(x, R - x),
-        text("meta", "{format}  {year}  {genre}", MED, 6, x, R - x, META, min_pt=5, upper=True),
-        barcode(L, SCAN_TOP - 1.0, W, 6.5),           # ends 2 mm above the caps of the price line
-        text("sku", "{sku}", REG, 6, L, 22, PRICE_FOOT),
-        text("price", "{price}", MED, 10, 24, R - 24, PRICE_FOOT, align="right", min_pt=7),
-    ])
-
-
-def chip(eid, content, font, pt, x, y, w, h, *, min_pt=None, upper=False, align="center"):
-    """White text on a black box (the box is the element)."""
-    return {"id": eid, "type": "text", "content": content, "x": x, "y": y, "w": w, "h": h, "font": font, "size_pt": pt,
-            "min_size_pt": min_pt or pt, "bold": False, "italic": False, "reverse": True, "upper": upper,
-            "align": align, "valign": "middle"}
-
-
 def line(eid, x, y, w, h):
     return {"id": eid, "type": "rect", "x": x, "y": y, "w": w, "h": h}
-
-
-def catalogue_line():
-    """After Hard Wax, Yoyaku and Honest Jon's: the catalogue line on top, artist and title as the headline,
-    and format and price fused into one ticket, the single black element."""
-    tx, tw = 28.5, R - 28.5
-    return design("MF Concept · Catalogue line", [
-        text("sku", "{sku}", MED, 6, L, 20, 4.5),
-        text("meta", "{year}  {genre}", MED, 6, 22.5, R - 22.5, 4.5, align="right", min_pt=5, upper=True),
-        rule(5.5),
-        artist_at(10.0),
-        text("title", "{title}", REG, 8, L, W, 13.5, min_pt=5),
-        barcode(L, 18.5, 24, 9.0),
-        line("ticket", tx, 16.5, tw, 11.0),
-        chip("format", "{format}", MED, 6, tx + 1.0, 17.5, tw - 2.0, 3.0, min_pt=5, upper=True, align="left"),
-        chip("price", "{price}", MED, 10, tx + 1.0, 22.0, tw - 2.0, 4.5, min_pt=7, align="left"),
-    ])
-
-
-def artist_at(baseline, x=L, w=W, pt=12, min_pt=6.5, lines=1, top=None):
-    return text("artist", "{artist}", SEMI, pt, x, w, baseline, min_pt=min_pt, lines=lines, top=top)
 
 
 def flow(eid, content, font, pt, x, w, first_baseline, last_baseline, *, min_pt=None, lines=2, after="", gap=0.0):
@@ -209,111 +121,33 @@ def price_card():
     ])
 
 
-def format_tile():
-    """Medium Format's own idea: the format is the hero mark, a black tile like an element in a periodic table."""
-    x = L + 11.0 + 2.0
-    return design("MF Concept · Format tile", [
-        line("tile", L, T, 11.0, 11.0),                # the tile stays whole when the year is empty
-        chip("format", "{format}", SEMI, 12, L, T, 11.0, 8.0, min_pt=5, upper=True),
-        chip("year", "{year}", MED, 6, L, T + 8.0, 11.0, 3.0, min_pt=5),
-        artist_at(5.5, x, R - x),
-        text("title", "{title}", REG, 8, x, R - x, 9.0, min_pt=5),
-        text("genre", "{genre}", MED, 6, x, R - x, T + 11.0, min_pt=5, upper=True),
-        barcode(L, 16.5, W, 6.5),
-        text("sku", "{sku}", REG, 6, L, 22, PRICE_FOOT),
-        text("price", "{price}", MED, 10, 24, R - 24, PRICE_FOOT, align="right", min_pt=7),
-    ])
-
-
 MONO, MONO_REG = "dm-mono-medium", "dm-mono"
 
 
-def ellipse(eid, x, y, w, h, *, fill="none", stroke=0.125, rings=0, ring_gap=0.5):
-    return {"id": eid, "type": "ellipse", "x": x, "y": y, "w": w, "h": h, "fill": fill, "stroke": stroke,
-            "rings": rings, "ring_gap": ring_gap}
-
-
-def stamp():
-    """After Japanese postage stamps: a perforated edge, a printed hairline border, a vignette (a record, grooves and label),
-    the price as the denomination, and a postmark that overlaps the vignette and carries the year.
-
-    Left: the record and its postmark. Right: price, a rule, artist and title. Foot: format, genre, SKU, then the barcode."""
-    frame = 1.3
-    xi0, xi1, yi0, yi1 = L + frame, R - frame, T + frame, B - frame      # the printed border, inside the perforation
-    disc = 11.5
-    cx = cy = 5.2 + disc / 2
-    pm = 7.0                                                         # postmark diameter
-    pcx = pcy = 15.4
-    rx = 19.5                                                        # the right column
-    rw = xi1 - 0.8 - rx
-    hair = 0.125
-    return design("MF Stamp", [
-        {"id": "perforation", "type": "perforation", "x": L, "y": T, "w": W, "h": B - T, "pitch": 1.25, "radius": 0.4, "stroke": hair},
-        line("in-top", xi0, yi0, xi1 - xi0, hair), line("in-bottom", xi0, yi1 - hair, xi1 - xi0, hair),
-        line("in-left", xi0, yi0, hair, yi1 - yi0), line("in-right", xi1 - hair, yi0, hair, yi1 - yi0),
-        # the vignette: a record with grooves, a black label and a spindle hole
-        ellipse("disc", 5.2, 5.2, disc, disc, rings=7, ring_gap=0.5),
-        ellipse("disc-label", round(cx - 1.7, 2), round(cy - 1.7, 2), 3.4, 3.4, fill="black", stroke=0),
-        ellipse("disc-hole", round(cx - 0.3, 2), round(cy - 0.3, 2), 0.6, 0.6, fill="white", stroke=0),
-        # the postmark over the vignette's corner: a white double ring with the year in it
-        ellipse("postmark", round(pcx - pm / 2, 2), round(pcy - pm / 2, 2), pm, pm, fill="white", stroke=hair, rings=1, ring_gap=0.4),
-        text("pm-name", "MF", SEMI, 6.5, pcx - 2.8, 5.6, pcy - 0.5, align="center", min_pt=5),
-        text("pm-year", "{year}", MED, 5, pcx - 2.8, 5.6, pcy + 1.6, align="center", min_pt=4, blank="–"),
-        # the denomination, a rule, then the name
-        text("price", "{price}", SEMI, 11, rx, rw, 8.8, align="right", min_pt=7),
-        line("rule", rx, 10.0, rw, hair),
-        flow("artist", "{artist}", SEMI, 8, rx, rw, 12.7, 15.9, min_pt=6.5),
-        flow("title", "{title}", MED, 6.5, rx, rw, 12.7, 18.6, min_pt=5.5, after="artist", gap=2.7),
-        # the foot line, then the barcode
-        text("format", "{format}", SEMI, 5.5, 5.2, 9.0, 20.7, upper=True, min_pt=4.5, blank="–"),
-        text("genre", "{genre}", MED, 5.5, 15.0, 13.0, 20.7, upper=True, first_item=True, min_pt=4.5, blank="–"),
-        text("sku", "{sku}", MONO, 5, 28.5, xi1 - 0.8 - 28.5, 20.7, align="right", min_pt=4.5),
-        barcode(5.2, 22.0, xi1 - 0.8 - 5.2, 3.4),
+def passport_row():
+    """MF Passport, symbol left. Values only (no tiny labels); a 4.5 mm symbol on the barcode's row at the left, the barcode flush
+    right (it flips flush left, and the symbol gives way, when its bars need the whole width to stay 2 dots wide); the genre
+    flush right; two 36-character machine-readable lines at the foot (artist and title, then SKU, format, year and price)."""
+    col = 31.5                                   # the price column
+    fields = 13.8                                # baseline of the fields row
+    size = 4.5                                   # the symbol, in mm wide
+    sh = round(size * SYMBOL_H / SYMBOL_W, 2)
+    tw = col - L - 1.2
+    return design("MF Passport · symbol left", [
+        flow("artist", "{artist}", SEMI, 8, L, tw, 4.6, 7.6, min_pt=6.5),
+        flow("title", "{title}", MED, 6.8, L, tw, 4.6, 10.2, min_pt=5.5, after="artist", gap=2.6),
+        text("price", "{price}", SEMI, 10, col, R - col, 5.1, align="right", min_pt=6),
+        text("format", "{format}", MED, 6.5, L, 10, fields, upper=True, min_pt=5, blank="–"),
+        text("year", "{year}", MED, 6.5, 14.0, 8, fields, min_pt=5, blank="–"),
+        text("genre", "{genre}", MED, 6.5, 22.5, 25, fields, min_pt=5, first_item=True, blank="–", align="right"),
+        dict(barcode(L, 15.5, W, 6.75), reserve=round(size + 2.5, 2), align="right"),
+        {"id": "symbol", "type": "image", "src": "symbol", "x": L, "y": round(15.5 + (6.75 - sh) / 2, 2), "w": size, "h": sh, "gives_way": True},
+        text("mrz1", "R<MFX{artist}<<{title}", MONO_REG, 5.9, L, W, 25.3, min_pt=4.5, mrz=36),
+        text("mrz2", "{sku}<{format}<{year}<{price}", MONO_REG, 5.9, L, W, 27.4, min_pt=4.5, mrz=36),
     ])
 
 
-def passport(seal="under-price", size=6.0, side="right", genre_right=False):
-    """After old passports: values only (no tiny labels), the two machine-readable lines (36 characters each, like an ID
-    card) at the foot carrying the artist and title, then SKU, format, year and price, and a tall barcode between.
-
-    `seal` is where the symbol sits: under the price, in the header corner (price beneath it), or at the end of the fields row."""
-    col = 31.5                                   # the price column
-    fields = 13.8                                # baseline of the fields row
-    name = {"under-price": "MF Passport", "corner": "MF Passport · corner", "inline": "MF Passport · inline", "row": "MF Passport · symbol left"}[seal]
-    genre_w = 25 if seal != "inline" else round(R - MINI_W - 1.0 - 22.5, 2)
-    tw = col - L - (2.8 if seal == "corner" else 1.2)   # corner: the price shares the title's line, so give it more air
-    price_base = {"under-price": 5.1, "corner": 10.2, "inline": 5.1, "row": 5.1}[seal]
-    els = [
-        flow("artist", "{artist}", SEMI, 8, L, tw, 4.6, 7.6, min_pt=6.5),
-        flow("title", "{title}", MED, 6.8, L, tw, 4.6, 10.2, min_pt=5.5, after="artist", gap=2.6),
-        text("price", "{price}", SEMI, 10, col, R - col, price_base, align="right", min_pt=6),
-    ]
-    if seal == "under-price":
-        els.append({"id": "symbol", "type": "image", "src": "symbol", "x": round(R - MINI_W, 2), "y": 6.6, "w": MINI_W, "h": MINI_H})
-    elif seal == "corner":
-        els.append({"id": "symbol", "type": "image", "src": "symbol", "x": round(R - MINI_W, 2), "y": T + 0.1, "w": MINI_W, "h": MINI_H})
-    elif seal == "inline":
-        els.append({"id": "symbol", "type": "image", "src": "symbol", "x": round(R - MINI_W, 2), "y": round(fields - MINI_H, 2), "w": MINI_W, "h": MINI_H})
-    els += [
-        text("format", "{format}", MED, 6.5, L, 10, fields, upper=True, min_pt=5, blank="–"),
-        text("year", "{year}", MED, 6.5, 14.0, 8, fields, min_pt=5, blank="–"),
-        text("genre", "{genre}", MED, 6.5, 22.5, genre_w, fields, min_pt=5, first_item=True, blank="–", align="right" if genre_right else "left"),
-        dict(barcode(L, 15.5, W, 6.75), center=True) if seal != "row" else dict(barcode(L, 15.5, W, 6.75), reserve=round(size + 2.5, 2), align=side),
-        text("mrz1", "R<MFX{artist}<<{title}", MONO_REG, 5.9, L, W, 25.3, min_pt=4.5, mrz=36),
-        text("mrz2", "{sku}<{format}<{year}<{price}", MONO_REG, 5.9, L, W, 27.4, min_pt=4.5, mrz=36),
-    ]
-    if seal == "row":    # the symbol on the barcode's row, centred on the bars; gives way to a long barcode. `side` is where the barcode sits
-        sw, sh = size, round(size * SYMBOL_H / SYMBOL_W, 2)
-        els.insert(-2, {"id": "symbol", "type": "image", "src": "symbol", "x": round(R - sw, 2) if side == "left" else L, "y": round(15.5 + (6.75 - sh) / 2, 2),
-                        "w": sw, "h": sh, "gives_way": True})
-    return design(name, els)
-
-
-FILES = {"mf-brand-ledger": ledger, "mf-brand-barcode-foot": barcode_foot, "mf-brand-symbol-column": symbol_column,
-         "mf-concept-catalogue-line": catalogue_line, "mf-concept-price-card": price_card, "mf-concept-format-tile": format_tile,
-         "mf-stamp": stamp, "mf-passport": passport,
-         "mf-passport-corner": lambda: passport("corner"), "mf-passport-inline": lambda: passport("inline"),
-         "mf-passport-row": lambda: passport("row", 4.5, "right", genre_right=True)}
+FILES = {"mf-concept-price-card": price_card, "mf-passport-row": passport_row}
 
 
 def main() -> int:
