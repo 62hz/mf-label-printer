@@ -117,7 +117,7 @@ def main():
 
 
             # ---- designer: edit, see it in the preview request, save as, print with it, reload, delete
-            expect(page.locator("#designSel")).to_have_value("mf-concept-price-card")   # the page opens on the MF Price card
+            expect(page.locator("#designSel")).to_have_value("mf-passport-row")   # the page opens on MF Passport, symbol left
             page.click("#designer summary")
             page.select_option("#designSel", "mf-stamp")                                # the new element types open in the editor
             page.locator("#elList li", has_text="perforation").locator("button.elname").click()
@@ -192,7 +192,7 @@ def main():
             expect(page.locator("#designDelete")).to_be_enabled()
             page.click("#designDelete")
             expect(page.locator("#designSel option")).to_have_count(14)
-            expect(page.locator("#designSel")).to_have_value("mf-concept-price-card")
+            expect(page.locator("#designSel")).to_have_value("mf-passport-row")
 
             body = page.inner_text("body")
             assert "undefined" not in body and "null" not in body.lower().replace("nullable", ""), body[:200]

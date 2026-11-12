@@ -75,7 +75,9 @@ def test_label_png_uses_the_default_design_a_slug_or_an_inline_design(signed_in)
     r = signed_in.post("/api/label.png", json={"label": LABEL})
     assert r.headers["content-type"] == "image/png"
     assert Image.open(io.BytesIO(r.content)).size == (400, 240)
-    assert "1 dot" in r.headers["x-label-notes"]
+    assert r.headers["x-label-notes"] == ""                                  # a 10-character SKU gets 2-dot bars on the default Passport
+    long_sku = signed_in.post("/api/label.png", json={"label": dict(LABEL, sku="ABCDEFGHIJKLMNOP")})
+    assert long_sku.status_code == 200 and "1 dot" in long_sku.headers["x-label-notes"]   # a 16-character one prints, with the note
     by_slug = signed_in.post("/api/label.png", json={"label": LABEL, "design": "mf-large"}).content
     assert by_slug != r.content
     inline = design("mf-april")
@@ -104,7 +106,7 @@ def test_notes_with_non_latin_text_still_make_a_valid_header(signed_in, monkeypa
 
 def test_designs_api_list_get_save_delete(signed_in):
     body = signed_in.get("/api/designs").json()
-    assert body["default"] == "mf-concept-price-card" and [d["slug"] for d in body["designs"]][:14] == ["mf-april", "mf-brand-barcode-foot", "mf-brand-ledger", "mf-brand-symbol-column", "mf-concept-catalogue-line", "mf-concept-format-tile", "mf-concept-price-card", "mf-large", "mf-passport-corner", "mf-passport-inline", "mf-passport-row", "mf-passport", "mf-scan-safe", "mf-stamp"]
+    assert body["default"] == "mf-passport-row" and [d["slug"] for d in body["designs"]][:14] == ["mf-april", "mf-brand-barcode-foot", "mf-brand-ledger", "mf-brand-symbol-column", "mf-concept-catalogue-line", "mf-concept-format-tile", "mf-concept-price-card", "mf-large", "mf-passport-corner", "mf-passport-inline", "mf-passport-row", "mf-passport", "mf-scan-safe", "mf-stamp"]
     assert "fonts" not in body                                       # the font list has its own route: /api/fonts
     assert signed_in.get("/api/designs/mf-april").json()["width_mm"] == 50
     assert signed_in.get("/api/designs/nope").status_code == 404

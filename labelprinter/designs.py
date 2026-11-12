@@ -10,7 +10,7 @@ from pathlib import Path
 
 from . import fonts
 
-DEFAULT_SLUG = os.environ.get("LABELPRINTER_DEFAULT_DESIGN", "mf-concept-price-card")  # the design the page opens with
+DEFAULT_SLUG = os.environ.get("LABELPRINTER_DEFAULT_DESIGN", "mf-passport-row")  # the design the page opens with
 BUILTIN_DIR = Path(__file__).resolve().parent / "designs"
 FIELDS = {"sku", "artist", "title", "format", "year", "genre", "price", "copies"}
 TYPES = ("text", "barcode", "rect", "image", "ellipse", "perforation")
