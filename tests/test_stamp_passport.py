@@ -8,7 +8,8 @@ from PIL import Image
 from labelprinter import designs, render
 from labelprinter.model import Label
 
-NEW = ["mf-stamp", "mf-passport"]
+PASSPORTS = ["mf-passport", "mf-passport-corner", "mf-passport-inline"]
+NEW = ["mf-stamp"] + PASSPORTS
 SAMPLES = [
     Label("NOUPASC001", "Nourished By Time", "The Passionate Ones", "CD", "2024", "Soul", 330000),
     Label("4988031465987", "Kikagaku Moyo", "Kumoyo Island", "CD", "2022", "Psychedelic Rock", 299000),
@@ -131,3 +132,72 @@ def test_the_stamp_prints_the_whole_sku_even_a_16_character_one(label, monkeypat
     drawn = spy_text(monkeypatch)
     render.render(label, load("mf-stamp"))
     assert label.sku in drawn
+
+
+# --- the Passport, round 5: no tiny labels, a tall barcode with air below it, and three places for the symbol ---
+
+def boxes(slug):
+    return {e["id"]: e for e in designs.validate(load(slug))["elements"]}
+
+
+def overlap(a, b):
+    return a["x"] < b["x"] + b["w"] and b["x"] < a["x"] + a["w"] and a["y"] < b["y"] + b["h"] and b["y"] < a["y"] + a["h"]
+
+
+@pytest.mark.parametrize("slug", PASSPORTS)
+def test_the_passport_has_no_tiny_capital_labels(slug, monkeypatch):
+    drawn = spy_text(monkeypatch)
+    render.render(SAMPLES[0], load(slug))
+    assert not {"ARTIST / TITLE", "PRICE", "FORMAT", "YEAR", "GENRE"} & set(drawn)
+
+
+@pytest.mark.parametrize("slug", PASSPORTS)
+def test_the_passport_barcode_is_tall_and_leaves_air_above_the_machine_readable_lines(slug):
+    bar = boxes(slug)["barcode"]
+    assert bar["h"] >= 6.5
+    img = render.render(SAMPLES[0], load(slug)).convert("L")
+    bottom = round((bar["y"] + bar["h"]) * render.DPM)
+    first_ink = next(y for y in range(bottom, 240) if any(img.getpixel((x, y)) == 0 for x in range(20, 380)))
+    assert first_ink - bottom >= 12, first_ink - bottom       # 1.5 mm
+
+
+@pytest.mark.parametrize("slug", PASSPORTS)
+@pytest.mark.parametrize("label", SAMPLES[:2], ids=lambda label: label.sku)
+def test_the_passport_barcode_reads_when_tilted_8_degrees_either_way(slug, label):
+    img = render.render(label, load(slug)).convert("L").resize((1600, 960), Image.NEAREST)
+    for angle in (-8, 8):
+        tilted = img.rotate(angle, resample=Image.BICUBIC, expand=True, fillcolor=255)
+        assert label.sku in [b.text for b in zxingcpp.read_barcodes(tilted)], angle
+
+
+@pytest.mark.parametrize("slug", PASSPORTS[1:])
+def test_the_three_passports_share_one_skeleton_only_the_symbol_moves(slug):
+    base, other = boxes("mf-passport"), boxes(slug)
+    for key in ("barcode", "mrz1", "mrz2", "format", "year", "artist"):
+        assert base[key]["y"] == other[key]["y"] and base[key]["x"] == other[key]["x"], key
+
+
+@pytest.mark.parametrize("slug", PASSPORTS)
+@pytest.mark.parametrize("label", [SAMPLES[2], SAMPLES[1], SAMPLES[0]], ids=lambda label: label.sku)
+def test_the_symbol_keeps_0_75_mm_clear_of_everything_else(slug, label):
+    from PIL import ImageChops, ImageFilter
+    full = load(slug)
+    only = dict(full, elements=[e for e in full["elements"] if e["id"] == "symbol"])
+    rest = dict(full, elements=[e for e in full["elements"] if e["id"] != "symbol"])
+    sym = ImageChops.invert(render.render(label, only).convert("L"))
+    others = ImageChops.invert(render.render(label, rest).convert("L")).filter(ImageFilter.MaxFilter(13))   # 6 dots each way
+    assert ImageChops.multiply(sym.point(lambda v: 255 if v else 0), others.point(lambda v: 255 if v else 0)).getbbox() is None
+    left, top, right, bottom = sym.getbbox()
+    assert left >= 20 and top >= 20 and right <= 380 and bottom <= 220
+
+
+def test_a_horizontal_barcode_can_be_centred_in_its_box():
+    bar = {"type": "barcode", "content": "{sku}", "x": 2.5, "y": 5, "w": 45, "h": 6, "mode": "integer"}
+    left = render.render(Label("NOUPASC001"), blank(bar)).convert("L")
+    mid = render.render(Label("NOUPASC001"), blank(dict(bar, center=True))).convert("L")
+    def span(img):
+        l, _, r, _ = img.point(lambda v: 255 - v).getbbox()
+        return l, 400 - r
+    (l0, r0), (l1, r1) = span(left), span(mid)
+    assert l0 == 20 and r0 > 40                 # drawn from the left edge, the room is on the right
+    assert abs(l1 - r1) <= 1 and l1 > 20        # centred

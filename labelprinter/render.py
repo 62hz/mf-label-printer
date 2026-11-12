@@ -247,8 +247,8 @@ def _text(draw, el: dict, label: Label, k: int = 1, flow_y: int | None = None):
     return y1
 
 
-def _barcode(draw, el: dict, label: Label) -> int:
-    """Draw the bars from the left of the box; return how many dots long the drawn barcode is."""
+def _barcode(draw, el: dict, label: Label, center: bool = False) -> int:
+    """Draw the bars from the left of the box (or centred in it); return how many dots long the drawn barcode is."""
     data = expand(el["content"], label)
     bits = bars(data)
     x0, y0, x1, y1 = _box(el)
@@ -256,6 +256,8 @@ def _barcode(draw, el: dict, label: Label) -> int:
     if width < n:
         raise ValueError(f"Barcode {data!r} needs at least {n / DPM:.1f} mm of width, the element is {el['w']} mm")
     scale = (width // n) if el["mode"] == "integer" else width / n
+    if center:
+        x0 += (width - math.floor(n * scale + 0.5)) // 2
     i = 0
     while i < n:
         if bits[i] == "1":
@@ -363,7 +365,9 @@ def render(label: Label, design: dict) -> Image.Image:
             taken.append((x0, y0 + offset, x1, y0 + offset + length))
         elif el["type"] == "barcode":
             x0, y0, x1, y1 = _box(el)
-            taken.append((x0, y0, x0 + _barcode(draw, el, label), y1))
+            length = _barcode(draw, el, label, center=el["center"])
+            x0 += (x1 - x0 - length) // 2 if el["center"] else 0
+            taken.append((x0, y0, x0 + length, y1))
         elif el["type"] == "rect" and smooth:
             # on the text copy, so white text placed on a black box stays white (edges stay on whole dots: k-times coordinates)
             x0, y0, x1, y1 = (v * SMOOTH for v in _box(el))

@@ -272,33 +272,43 @@ def stamp():
     ])
 
 
-def passport():
-    """After old passports: tiny capital labels over every value, the seal beside the price, and the two machine-readable
-    lines (36 characters each, like an ID card) at the foot, carrying the artist and title, then SKU, format, year and price."""
-    inset_r = W - MINI_W
+def passport(seal="under-price"):
+    """After old passports: values only (no tiny labels), the two machine-readable lines (36 characters each, like an ID
+    card) at the foot carrying the artist and title, then SKU, format, year and price, and a tall barcode between.
+
+    `seal` is where the symbol sits: under the price, in the header corner (price beneath it), or at the end of the fields row."""
     col = 31.5                                   # the price column
-    return design("MF Passport", [
-        text("l-name", "Artist / Title", REG, 4.5, L, 28, 4.8, upper=True),
-        flow("artist", "{artist}", SEMI, 8, L, col - L - 1.2, 7.8, 10.8, min_pt=6.5),
-        flow("title", "{title}", MED, 6.8, L, col - L - 1.2, 7.8, 13.4, min_pt=5.5, after="artist", gap=2.6),
-        text("l-price", "Price", REG, 4.5, col, R - col, 4.8, upper=True, align="right"),
-        text("price", "{price}", SEMI, 10, col, R - col, 8.4, align="right", min_pt=6),
-        {"id": "symbol", "type": "image", "src": "symbol", "x": round(R - MINI_W, 2), "y": 9.6, "w": MINI_W, "h": MINI_H},
-        text("l-format", "Format", REG, 4.5, L, 10, 16.4, upper=True),
-        text("format", "{format}", MED, 6.5, L, 10, 18.7, upper=True, min_pt=5, blank="–"),
-        text("l-year", "Year", REG, 4.5, 13.0, 8, 16.4, upper=True),
-        text("year", "{year}", MED, 6.5, 13.0, 8, 18.7, min_pt=5, blank="–"),
-        text("l-genre", "Genre", REG, 4.5, 21.5, 26, 16.4, upper=True),
-        text("genre", "{genre}", MED, 6.5, 21.5, 26, 18.7, min_pt=5, first_item=True, blank="–"),
-        barcode(L, 19.7, W, 3.9),
+    fields = 13.8                                # baseline of the fields row
+    name = {"under-price": "MF Passport", "corner": "MF Passport · corner", "inline": "MF Passport · inline"}[seal]
+    genre_w = 25 if seal != "inline" else round(R - MINI_W - 1.0 - 22.5, 2)
+    tw = col - L - (2.8 if seal == "corner" else 1.2)   # corner: the price shares the title's line, so give it more air
+    price_base = {"under-price": 5.1, "corner": 10.2, "inline": 5.1}[seal]
+    els = [
+        flow("artist", "{artist}", SEMI, 8, L, tw, 4.6, 7.6, min_pt=6.5),
+        flow("title", "{title}", MED, 6.8, L, tw, 4.6, 10.2, min_pt=5.5, after="artist", gap=2.6),
+        text("price", "{price}", SEMI, 10, col, R - col, price_base, align="right", min_pt=6),
+    ]
+    if seal == "under-price":
+        els.append({"id": "symbol", "type": "image", "src": "symbol", "x": round(R - MINI_W, 2), "y": 6.6, "w": MINI_W, "h": MINI_H})
+    elif seal == "corner":
+        els.append({"id": "symbol", "type": "image", "src": "symbol", "x": round(R - MINI_W, 2), "y": T + 0.1, "w": MINI_W, "h": MINI_H})
+    else:
+        els.append({"id": "symbol", "type": "image", "src": "symbol", "x": round(R - MINI_W, 2), "y": round(fields - MINI_H, 2), "w": MINI_W, "h": MINI_H})
+    els += [
+        text("format", "{format}", MED, 6.5, L, 10, fields, upper=True, min_pt=5, blank="–"),
+        text("year", "{year}", MED, 6.5, 14.0, 8, fields, min_pt=5, blank="–"),
+        text("genre", "{genre}", MED, 6.5, 22.5, genre_w, fields, min_pt=5, first_item=True, blank="–"),
+        dict(barcode(L, 15.5, W, 6.75), center=True),
         text("mrz1", "R<MFX{artist}<<{title}", MONO_REG, 5.9, L, W, 25.3, min_pt=4.5, mrz=36),
         text("mrz2", "{sku}<{format}<{year}<{price}", MONO_REG, 5.9, L, W, 27.4, min_pt=4.5, mrz=36),
-    ])
+    ]
+    return design(name, els)
 
 
 FILES = {"mf-brand-ledger": ledger, "mf-brand-barcode-foot": barcode_foot, "mf-brand-symbol-column": symbol_column,
          "mf-concept-catalogue-line": catalogue_line, "mf-concept-price-card": price_card, "mf-concept-format-tile": format_tile,
-         "mf-stamp": stamp, "mf-passport": passport}
+         "mf-stamp": stamp, "mf-passport": passport,
+         "mf-passport-corner": lambda: passport("corner"), "mf-passport-inline": lambda: passport("inline")}
 
 
 def main() -> int:
