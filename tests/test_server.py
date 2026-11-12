@@ -33,7 +33,8 @@ def signed_in(client):
 
 
 def test_everything_is_closed_until_login(client):
-    assert client.get("/").status_code == 303 and client.get("/").headers["location"] == "/login"
+    r = client.get("/")                                  # the sign-in page itself, not a redirect (a bare 303 is saved as a download by some phone browsers)
+    assert r.status_code == 200 and 'action="/login"' in r.text and r.headers["content-type"].startswith("text/html")
     for path in ("/api/status", "/api/search?q=a", "/api/test.tspl", "/api/test.pdf", "/api/designs", "/api/designs/mf-april", "/api/fonts"):
         assert client.get(path).status_code == 401
     for path in ("/api/resolve", "/api/labels.pdf", "/api/labels.xlsx", "/api/labels.tspl", "/api/label.png", "/api/sheet",

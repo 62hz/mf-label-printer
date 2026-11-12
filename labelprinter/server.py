@@ -113,7 +113,7 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
             if not authed(request):
                 if request.url.path.startswith("/api/"):
                     return JSONResponse({"error": "Not signed in."}, status_code=401)
-                return RedirectResponse("/login", status_code=303)
+                return FileResponse(STATIC / "login.html")  # the sign-in page itself, not a redirect to it: some phone browsers save a bare 303 as a download
             if request.method == "POST" and request.url.path in ("/api/sheet", "/api/fonts"):  # refuse a big or unsized upload before the form is parsed
                 length = request.headers.get("content-length", "")
                 if not length.isdigit() or int(length) > MAX_UPLOAD + 65536:
