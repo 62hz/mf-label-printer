@@ -84,4 +84,4 @@ uv run python scripts/make_samples.py "C:/Users/SER5 MAX/Documents/#MEDFOR/04APR
 
 ## Licence
 
-Code: MIT, see `LICENSE`. The bundled fonts (DM Sans, DM Mono) are under the SIL Open Font License 1.1, see `labelprinter/fonts/OFL.txt`. The Medium Format name and logo files in `assets/` are not covered by the MIT licence. This repo needs the private `dealpos-mcp` package and DealPOS credentials to run against real data; `scripts/dev_server.py` runs it on fake data.
+Code: MIT, see `LICENSE`. The bundled fonts (DM Sans, DM Mono) are under the SIL Open Font License 1.1, see `labelprinter/fonts/OFL.txt`. The Medium Format name and logo files in `assets/` are not covered by the MIT licence (see `NOTICE`). This repo needs the private `dealpos-mcp` package and DealPOS credentials to run against real data; `scripts/dev_server.py` runs it on fake data.

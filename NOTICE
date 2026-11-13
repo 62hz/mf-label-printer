@@ -1,0 +1,7 @@
+Not covered by the MIT licence in LICENSE:
+
+- The Medium Format name, logo and symbol (assets/mf-*.png) are trademarks of
+  Medium Format. All rights reserved; do not reuse them.
+- The bundled fonts (labelprinter/fonts/, labelprinter/static/fonts/) are
+  DM Sans and DM Mono under the SIL Open Font License 1.1. Copyright lines and
+  licence text: labelprinter/fonts/OFL.txt.

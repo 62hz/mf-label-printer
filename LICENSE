@@ -19,10 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-Exceptions, not covered by this licence:
-- The Medium Format name, logo and symbol (assets/mf-*.png) are trademarks of
-  Medium Format. All rights reserved; do not reuse them.
-- The bundled fonts (labelprinter/fonts/, labelprinter/static/fonts/) are
-  DM Sans and DM Mono under the SIL Open Font License 1.1; see
-  labelprinter/fonts/OFL.txt.
