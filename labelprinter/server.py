@@ -144,8 +144,6 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
 
     async def login(request: Request):
         who = client_id(request)
-        if throttle.blocked(who):
-            return JSONResponse({"error": "Too many wrong passwords. Try again in 10 minutes."}, status_code=429)
         # The page posts a small urlencoded form. Refuse anything else before the body is parsed (multipart spools to disk).
         kind = request.headers.get("content-type", "").partition(";")[0].strip().lower()
         if kind != "application/x-www-form-urlencoded":
@@ -155,7 +153,7 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
             return JSONResponse({"error": "Request is too large."}, status_code=413)
         form = await request.form()
         given = str(form.get("password", ""))
-        if throttle.slow():   # many wrong passwords from everyone: check slowly, one at a time, instead of refusing the owner
+        if throttle.blocked(who) or throttle.slow():   # many wrong passwords (this client, or everyone): check slowly, one at a time, never refuse a correct password
             if slow["waiting"] >= auth.SLOW_QUEUE:
                 return JSONResponse({"error": "Sign-in is busy. Try again in a minute."}, status_code=429)
             slow["waiting"] += 1

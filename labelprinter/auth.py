@@ -10,10 +10,10 @@ from pathlib import Path
 
 COOKIE = "lp_session"
 EXPIRY_SECONDS = 7 * 24 * 3600
-MAX_FAILURES = 10         # per client: more wrong passwords than this and that client is refused
-MAX_GLOBAL_FAILURES = 40  # all clients together: past this, sign-in is slowed down (SLOW_DELAY), not refused
+MAX_FAILURES = 10         # per client: more wrong passwords than this and that client's sign-ins are slowed (SLOW_DELAY)
+MAX_GLOBAL_FAILURES = 40  # all clients together: past this, everyone's sign-ins are slowed
 FAILURE_WINDOW = 600  # seconds
-SLOW_DELAY = 2.0      # seconds each password check waits while slowed; one check at a time, so at most 1 guess per SLOW_DELAY
+SLOW_DELAY = 3.0      # seconds each password check waits while slowed; one check at a time, so at most 1 guess per SLOW_DELAY (20 a minute)
 SLOW_QUEUE = 4        # sign-ins allowed to wait while slowed; more than this get "busy"
 
 
@@ -93,10 +93,11 @@ def password_ok(given: str, expected: str) -> bool:
 
 
 class Throttle:
-    """At most MAX_FAILURES wrong passwords per client in FAILURE_WINDOW seconds. When everyone together passes
-    MAX_GLOBAL_FAILURES, slow() turns true: the server then checks passwords one at a time with a delay, so rotating
-    client addresses does not speed guessing up, and a correct password still gets in (a hard global block would let
-    anyone lock the owner out by failing 40 times)."""
+    """Counts wrong passwords in FAILURE_WINDOW seconds, per client and for everyone together. Over MAX_FAILURES for a
+    client (blocked) or over MAX_GLOBAL_FAILURES overall (slow), the server checks passwords one at a time with a delay.
+    Guessing is then capped at one try per SLOW_DELAY whatever the addresses, and a correct password still gets in:
+    refusing outright would let anyone lock the owner out by failing on purpose (and behind a proxy every visitor shares
+    one address)."""
 
     def __init__(self, clock=time.monotonic):
         self._clock = clock

@@ -79,13 +79,26 @@ def test_f1_delete_route_cannot_climb_out_of_the_designs_folder(tmp_path):
 
 # ---------------------------------------------------------------- F2 login throttle bypass
 
-def test_f2_a_spoofed_forwarded_for_header_does_not_dodge_the_throttle(tmp_path):
+def test_f2_a_spoofed_forwarded_for_header_does_not_dodge_the_throttle(tmp_path, monkeypatch):
+    monkeypatch.setattr(auth, "SLOW_DELAY", 0.2)
     c = make_client(tmp_path)
-    codes = [c.post("/login", data={"password": "nope"}, headers={"X-Forwarded-For": f"10.0.0.{n}"}).status_code
-             for n in range(12)]
-    assert codes[:auth.MAX_FAILURES] == [303] * auth.MAX_FAILURES
-    assert codes[auth.MAX_FAILURES] == 429  # the 11th attempt
-    assert c.post("/login", data={"password": PASSWORD}, headers={"X-Forwarded-For": "9.9.9.9"}).status_code == 429
+    for n in range(auth.MAX_FAILURES):   # rotating "client addresses" in a header the server must not trust
+        assert c.post("/login", data={"password": "nope"}, headers={"X-Forwarded-For": f"10.0.0.{n}"}).status_code == 303
+    started = time.monotonic()
+    r = c.post("/login", data={"password": "nope"}, headers={"X-Forwarded-For": "9.9.9.9"})
+    assert r.status_code == 303 and r.headers["location"] == "/login?bad=1"
+    assert time.monotonic() - started >= 0.2   # slowed: the real peer address is over its limit
+
+
+def test_f2_a_correct_password_still_signs_in_after_many_wrong_ones_just_later(tmp_path, monkeypatch):
+    monkeypatch.setattr(auth, "SLOW_DELAY", 0.2)
+    c = make_client(tmp_path)
+    for _ in range(auth.MAX_FAILURES + 2):
+        c.post("/login", data={"password": "nope"})
+    started = time.monotonic()
+    r = c.post("/login", data={"password": PASSWORD})
+    assert r.status_code == 303 and r.headers["location"] == "/" and auth.COOKIE in r.headers["set-cookie"]
+    assert time.monotonic() - started >= 0.2
 
 
 def test_f2_global_cap_slows_a_fresh_client_but_does_not_block_it_then_frees_after_the_window():
@@ -107,7 +120,7 @@ def test_f2_global_cap_is_not_reached_one_failure_early():
     assert not t.slow()
 
 
-def test_f2_slow_sign_in_checks_one_password_at_a_time_and_refuses_a_long_queue(tmp_path, monkeypatch):
+def test_f2_slow_sign_in_checks_one_password_at_a_time(tmp_path, monkeypatch):
     monkeypatch.setattr(auth, "SLOW_DELAY", 0.05)
     monkeypatch.setattr(auth, "MAX_FAILURES", 10_000)   # isolate the global behaviour from the per-client block
     app = create_app(Catalog(FakeClient()), PASSWORD, b"k" * 32, DesignStore(tmp_path / "designs"))

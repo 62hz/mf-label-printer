@@ -8,7 +8,7 @@ import pytest
 from PIL import Image
 from starlette.testclient import TestClient
 
-from labelprinter import fonts, server
+from labelprinter import auth, fonts, server
 from labelprinter.catalog import Catalog
 from labelprinter.designs import DesignStore
 from labelprinter.server import MAX_ROWS, MAX_TOTAL, create_app
@@ -46,12 +46,13 @@ def test_everything_is_closed_until_login(client):
     assert client.get("/static/style.css").status_code == 200
 
 
-def test_wrong_password_and_throttle(client):
+def test_wrong_password_and_throttle(client, monkeypatch):
+    monkeypatch.setattr(auth, "SLOW_DELAY", 0.0)
     r = client.post("/login", data={"password": "nope"})
     assert r.status_code == 303 and r.headers["location"] == "/login?bad=1"
     for _ in range(12):
         client.post("/login", data={"password": "nope"})
-    assert client.post("/login", data={"password": PASSWORD}).status_code == 429
+    assert client.post("/login", data={"password": PASSWORD}).status_code == 303   # slowed, never locked out
 
 
 def test_login_then_logout(signed_in):
