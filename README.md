@@ -81,3 +81,7 @@ uv run python scripts/make_samples.py "C:/Users/SER5 MAX/Documents/#MEDFOR/04APR
 - Fonts: a text element can use any font installed on this PC (`C:/Windows/Fonts`; set `LABEL_FONT_DIR` to use another folder), DM Sans (the MF brand font, bundled in `labelprinter/fonts`), or a `.ttf` / `.otf` file you add with "Add a font file" in the design editor (kept in `data/fonts`, 5 MB each; added fonts get a Remove button). Light, Black and other weights are listed as their own fonts ("Lato Light"). A design that names a font this PC does not have still prints, in Arial, and the page says so. `py scripts/make_dmsans.py` regenerates the DM Sans files (needs fontTools, only for that script).
 - Static files (page code and fonts) are public; every data and download route needs the login cookie.
 - Tests: `uv run pytest -q`.
+
+## Licence
+
+Code: MIT, see `LICENSE`. The bundled fonts (DM Sans, DM Mono) are under the SIL Open Font License 1.1, see `labelprinter/fonts/OFL.txt`. The Medium Format name and logo files in `assets/` are not covered by the MIT licence. This repo needs the private `dealpos-mcp` package and DealPOS credentials to run against real data; `scripts/dev_server.py` runs it on fake data.
