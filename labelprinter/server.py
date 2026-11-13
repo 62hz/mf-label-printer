@@ -5,6 +5,7 @@ Run (from the project folder):
 Binds 127.0.0.1; reach it from the store through Tailscale Funnel (see README).
 """
 import argparse
+import asyncio
 import json
 import os
 import re
@@ -91,8 +92,11 @@ def parse_labels(payload) -> list[Label]:
     return labels
 
 
-def create_app(catalog, password: str, session_key: bytes, store: DesignStore | None = None) -> Starlette:
+def create_app(catalog, password: str, session_key: bytes, store: DesignStore | None = None,
+               revoked: auth.Revoked | None = None) -> Starlette:
     throttle = auth.Throttle()
+    revoked = revoked if revoked is not None else auth.Revoked()   # signed-out session ids (main() passes a file-backed list)
+    slow = {"lock": asyncio.Lock(), "waiting": 0}   # while sign-in is slowed: one password check at a time, a few may queue
     store = store or DesignStore(ROOT / "data" / "designs")
 
     def design_from(payload) -> dict:
@@ -106,7 +110,7 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
             raise BadRequest("Unknown design.") from None
 
     def authed(request: Request) -> bool:
-        return auth.valid_token(request.cookies.get(auth.COOKIE), session_key)
+        return auth.valid_token(request.cookies.get(auth.COOKIE), session_key, revoked=revoked)
 
     def guarded(handler):
         async def wrapper(request: Request):
@@ -150,7 +154,20 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
         if not length.isdigit() or int(length) > MAX_LOGIN_BODY:
             return JSONResponse({"error": "Request is too large."}, status_code=413)
         form = await request.form()
-        if not auth.password_ok(str(form.get("password", "")), password):
+        given = str(form.get("password", ""))
+        if throttle.slow():   # many wrong passwords from everyone: check slowly, one at a time, instead of refusing the owner
+            if slow["waiting"] >= auth.SLOW_QUEUE:
+                return JSONResponse({"error": "Sign-in is busy. Try again in a minute."}, status_code=429)
+            slow["waiting"] += 1
+            try:
+                async with slow["lock"]:
+                    await asyncio.sleep(auth.SLOW_DELAY)
+                    ok = auth.password_ok(given, password)
+            finally:
+                slow["waiting"] -= 1
+        else:
+            ok = auth.password_ok(given, password)
+        if not ok:
             throttle.record_failure(who)
             return RedirectResponse("/login?bad=1", status_code=303)
         resp = RedirectResponse("/", status_code=303)
@@ -160,6 +177,9 @@ def create_app(catalog, password: str, session_key: bytes, store: DesignStore | 
         return resp
 
     async def logout(request: Request):
+        parsed = auth.parse_token(request.cookies.get(auth.COOKIE), session_key)
+        if parsed:   # revoke this session on the server too, so a copy of the cookie stops working
+            revoked.add(*parsed)
         resp = RedirectResponse("/login", status_code=303)
         resp.delete_cookie(auth.COOKIE)
         return resp
@@ -331,7 +351,8 @@ def main() -> None:
     password = os.environ.get("LABELPRINTER_PASSWORD", "")
     if len(password) < MIN_PASSWORD:
         sys.exit(f"Set LABELPRINTER_PASSWORD ({MIN_PASSWORD}+ characters), e.g. run with: vault run dealpos mf-label-printer -- ...")
-    app = create_app(Catalog(read_only_client()), password, auth.get_session_key(ROOT / "data"))
+    app = create_app(Catalog(read_only_client()), password, auth.get_session_key(ROOT / "data"),
+                     revoked=auth.Revoked(ROOT / "data" / ".revoked.json"))
     # proxy_headers=False: no forwarded header is ever trusted, so the login throttle keys on the real TCP peer.
     uvicorn.run(app, host=args.host, port=args.port, proxy_headers=False)
 

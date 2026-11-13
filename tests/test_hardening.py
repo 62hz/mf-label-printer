@@ -88,23 +88,57 @@ def test_f2_a_spoofed_forwarded_for_header_does_not_dodge_the_throttle(tmp_path)
     assert c.post("/login", data={"password": PASSWORD}, headers={"X-Forwarded-For": "9.9.9.9"}).status_code == 429
 
 
-def test_f2_global_cap_blocks_a_fresh_client_then_frees_after_the_window():
+def test_f2_global_cap_slows_a_fresh_client_but_does_not_block_it_then_frees_after_the_window():
     now = [0.0]
     t = auth.Throttle(clock=lambda: now[0])
     assert auth.MAX_GLOBAL_FAILURES == 40
     for n in range(auth.MAX_GLOBAL_FAILURES):
-        assert not t.blocked("fresh")
+        assert not t.slow()
         t.record_failure(f"client-{n}")
-    assert t.blocked("fresh")
+    assert t.slow() and not t.blocked("fresh")   # slowed for everyone, refused for no one
     now[0] = auth.FAILURE_WINDOW + 1
-    assert not t.blocked("fresh")
+    assert not t.slow()
 
 
 def test_f2_global_cap_is_not_reached_one_failure_early():
     t = auth.Throttle(clock=lambda: 0.0)
     for n in range(auth.MAX_GLOBAL_FAILURES - 1):
         t.record_failure(f"client-{n}")
-    assert not t.blocked("fresh")
+    assert not t.slow()
+
+
+def test_f2_slow_sign_in_checks_one_password_at_a_time_and_refuses_a_long_queue(tmp_path, monkeypatch):
+    monkeypatch.setattr(auth, "SLOW_DELAY", 0.05)
+    monkeypatch.setattr(auth, "MAX_FAILURES", 10_000)   # isolate the global behaviour from the per-client block
+    app = create_app(Catalog(FakeClient()), PASSWORD, b"k" * 32, DesignStore(tmp_path / "designs"))
+    c = TestClient(app, follow_redirects=False)
+    for _ in range(auth.MAX_GLOBAL_FAILURES):
+        c.post("/login", data={"password": "nope"})
+    assert auth.MAX_FAILURES == 10_000
+    started = time.monotonic()
+    ok = c.post("/login", data={"password": PASSWORD})
+    assert ok.status_code == 303 and ok.headers["location"] == "/" and auth.COOKIE in ok.headers["set-cookie"]
+    assert time.monotonic() - started >= 0.05   # it waited its turn
+    wrong = c.post("/login", data={"password": "still-nope"})
+    assert wrong.status_code == 303 and wrong.headers["location"] == "/login?bad=1"
+
+
+def test_f2_a_busy_queue_is_refused_with_429(tmp_path, monkeypatch):
+    monkeypatch.setattr(auth, "SLOW_DELAY", 0.4)
+    monkeypatch.setattr(auth, "SLOW_QUEUE", 1)
+    monkeypatch.setattr(auth, "MAX_FAILURES", 10_000)
+    app = create_app(Catalog(FakeClient()), PASSWORD, b"k" * 32, DesignStore(tmp_path / "designs"))
+    with TestClient(app, follow_redirects=False) as c:
+        for _ in range(auth.MAX_GLOBAL_FAILURES):
+            c.post("/login", data={"password": "nope"})
+        codes = []
+        threads = [threading.Thread(target=lambda: codes.append(c.post("/login", data={"password": "nope"}).status_code))
+                   for _ in range(4)]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+    assert 429 in codes and 303 in codes
 
 
 def test_f2_throttle_forgets_clients_whose_failures_have_all_expired():

@@ -32,3 +32,34 @@ def test_throttle_blocks_after_ten_failures_and_frees_after_the_window():
     assert t.blocked("1.2.3.4") and not t.blocked("5.6.7.8")
     now[0] = auth.FAILURE_WINDOW + 1
     assert not t.blocked("1.2.3.4")
+
+
+def test_a_token_is_revoked_by_its_session_id_and_other_sessions_are_untouched():
+    a, b = auth.make_token(KEY, now=1000), auth.make_token(KEY, now=1000)
+    revoked = auth.Revoked(clock=lambda: 1001)
+    sid, expiry = auth.parse_token(a, KEY, now=1001)
+    revoked.add(sid, expiry)
+    assert not auth.valid_token(a, KEY, now=1001, revoked=revoked)
+    assert auth.valid_token(b, KEY, now=1001, revoked=revoked) and auth.valid_token(a, KEY, now=1001)
+
+
+def test_old_two_part_tokens_are_rejected():
+    assert auth.parse_token("9999999999." + auth._sign(KEY, "9999999999"), KEY, now=1) is None
+
+
+def test_revoked_list_survives_a_restart_and_forgets_expired_ids(tmp_path):
+    path = tmp_path / ".revoked.json"
+    now = [1000.0]
+    r = auth.Revoked(path, clock=lambda: now[0])
+    r.add("live", 5000)
+    r.add("old", 1500)
+    assert "live" in auth.Revoked(path, clock=lambda: now[0])
+    now[0] = 2000.0
+    again = auth.Revoked(path, clock=lambda: now[0])
+    assert "live" in again and "old" not in again
+
+
+def test_revoked_list_tolerates_a_corrupt_file(tmp_path):
+    path = tmp_path / ".revoked.json"
+    path.write_text("{not json", encoding="utf-8")
+    assert "x" not in auth.Revoked(path)

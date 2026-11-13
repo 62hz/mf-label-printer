@@ -61,6 +61,24 @@ def test_login_then_logout(signed_in):
     assert signed_in.get("/api/status").status_code == 401
 
 
+def test_logout_revokes_a_copy_of_the_cookie(signed_in):
+    copy = signed_in.cookies.get("lp_session")
+    assert copy and signed_in.get("/api/status").status_code == 200
+    signed_in.post("/logout")
+    signed_in.cookies.set("lp_session", copy)   # an attacker replays the cookie they copied before sign-out
+    assert signed_in.get("/api/status").status_code == 401
+
+
+def test_logout_leaves_another_session_signed_in(client):
+    one = client.post("/login", data={"password": PASSWORD}).cookies.get("lp_session")
+    two = client.post("/login", data={"password": PASSWORD}).cookies.get("lp_session")
+    assert one != two
+    client.cookies.set("lp_session", one)
+    client.post("/logout")
+    client.cookies.set("lp_session", two)
+    assert client.get("/api/status").status_code == 200
+
+
 def test_resolve_search_status_enrich(signed_in):
     body = signed_in.post("/api/resolve", json={"text": "AMEAMET158 nope"}).json()
     assert [l["sku"] for l in body["labels"]] == ["AMEAMET158"] and body["missing"] == ["nope"]
